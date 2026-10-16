@@ -110,7 +110,7 @@ export class DashboardController {
   @Post('payments/:id/cancel')
   @HttpCode(200)
   async cancel(@Req() req: DashboardRequest, @Param('id') id: string) {
-    await this.payments.cancel(req.session.merchantId, id, 'requested_by_customer');
+    await this.payments.cancel(req.session.merchantId, id, 'requested_by_merchant');
     return this.dash.paymentDetail(req.session.merchantId, id, baseUrl(req));
   }
 
