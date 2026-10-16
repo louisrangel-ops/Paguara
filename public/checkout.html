@@ -1,0 +1,834 @@
+<title>Checkout Paguara</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#F5F6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101613" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600&display=swap">
+<style>
+/* Una sola columna, como un recibo: comercio, total, el boleto con la tasa congelada y el pago.
+   El boleto amarillo es el único elemento llamativo y el único lugar con tipografía monoespaciada. */
+:root {
+  --paper: #F5F6F1;
+  --surface: #FFFFFF;
+  --ink: #17221D;
+  --muted: #56635C;
+  --line: #D9DED6;
+  --field-line: #7D8A83;
+  --accent: #1D5E47;
+  --accent-hover: #164A38;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E3EFE9;
+  --ticket: #F4C95D;
+  --ticket-ink: #17221D;
+  --ticket-muted: #4A4224;
+  --ok: #17663F;
+  --ok-soft: #DFF1E6;
+  --bad: #A8231B;
+  --bad-soft: #FBE6E3;
+  --font-ui: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-figure: "Spline Sans Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 12px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #101613; --surface: #18201C; --ink: #E8EEE9; --muted: #9AA79F; --line: #2A3530; --field-line: #6E7C74;
+    --accent: #6FC7A1; --accent-hover: #8AD5B4; --accent-ink: #0E1512; --accent-soft: #1D2E27;
+    --ticket: #E7B94C; --ticket-ink: #15120A; --ticket-muted: #43381A;
+    --ok: #6FD39C; --ok-soft: #173426; --bad: #FF8F85; --bad-soft: #3D1C1A;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #101613; --surface: #18201C; --ink: #E8EEE9; --muted: #9AA79F; --line: #2A3530; --field-line: #6E7C74;
+  --accent: #6FC7A1; --accent-hover: #8AD5B4; --accent-ink: #0E1512; --accent-soft: #1D2E27;
+  --ticket: #E7B94C; --ticket-ink: #15120A; --ticket-muted: #43381A;
+  --ok: #6FD39C; --ok-soft: #173426; --bad: #FF8F85; --bad-soft: #3D1C1A;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-ui); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 32px; -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.checkout { max-width: 500px; margin: 0 auto; display: grid; gap: 20px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px; display: grid; gap: 24px; min-width: 0; }
+@media (max-width: 480px) { body { padding-block: 16px; } .card { padding: 20px; border-radius: 16px; } }
+
+/* Comercio y total */
+.merchant { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.merchant-mark {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center; font-weight: 700; font-size: 19px; flex: none;
+}
+.merchant-name { font-weight: 600; overflow-wrap: anywhere; }
+.merchant-rif { font-size: 14px; color: var(--muted); }
+.order { display: grid; gap: 4px; }
+.order-k { margin: 0; font-size: 15px; color: var(--muted); }
+.price { margin: 0; font-weight: 700; font-size: clamp(34px, 9vw, 44px); line-height: 1.05; letter-spacing: -0.02em; }
+.price small { font-size: 0.45em; font-weight: 500; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+.desc { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Boleto con la tasa congelada */
+.ticket { background: var(--ticket); color: var(--ticket-ink); border-radius: 14px; display: grid; position: relative; }
+.ticket-main { padding: 18px 20px 16px; display: grid; gap: 4px; }
+.ticket-k { font-size: 15px; font-weight: 500; }
+.ticket-amount { font-family: var(--font-figure); font-weight: 600; font-size: clamp(26px, 7vw, 32px); line-height: 1.15; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ticket-line { font-size: 14px; color: var(--ticket-muted); }
+.ticket-line .fig { font-family: var(--font-figure); color: var(--ticket-ink); }
+.ticket-tear { height: 0; border-top: 2px dashed rgba(23, 34, 29, 0.35); margin-inline: 14px; position: relative; }
+.ticket-tear::before, .ticket-tear::after {
+  content: ""; position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface);
+}
+.ticket-tear::before { left: -26px; }
+.ticket-tear::after { right: -26px; }
+.ticket-stub { padding: 12px 20px 14px; display: flex; align-items: center; gap: 10px; font-family: var(--font-figure); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ticket-stub .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ticket-ink); flex: none; }
+.ticket-stub.live .dot { animation: pulse 1.6s ease-in-out infinite; }
+.ticket.expired { background: var(--bad-soft); color: var(--bad); }
+.ticket.expired .ticket-line, .ticket.expired .ticket-line .fig { color: var(--bad); }
+.ticket.expired .ticket-stub .dot { background: var(--bad); }
+.ticket.expired .ticket-tear { border-top-color: currentColor; opacity: 0.5; }
+@keyframes pulse { 50% { opacity: 0.25; } }
+
+/* Pago */
+.pay { display: grid; gap: 18px; min-width: 0; }
+h1 { font-weight: 700; font-size: 22px; line-height: 1.25; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h1:focus { outline: none; }
+p { margin: 0; }
+.methods { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.method {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; min-height: 60px;
+  text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 10px 16px; cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.method:hover:not([disabled]) { border-color: var(--field-line); }
+.method[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.method[disabled] { cursor: progress; }
+.method .tick { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--field-line); display: grid; place-items: center; }
+.method[aria-pressed="true"] .tick { border-color: var(--accent); }
+.method[aria-pressed="true"] .tick::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.method .m-text { display: grid; min-width: 0; }
+.method .m-name { font-weight: 600; }
+.method .m-sub { font-size: 14px; color: var(--muted); }
+.method .m-cur { font-size: 14px; font-weight: 500; color: var(--muted); }
+.method .spinner { width: 18px; height: 18px; }
+
+form { display: grid; gap: 16px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field label, .field .lbl { font-size: 15px; font-weight: 600; }
+.hint { font-size: 14px; color: var(--muted); }
+.err { font-size: 14px; color: var(--bad); font-weight: 500; }
+.pair { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 8px; }
+input, select {
+  background: var(--surface); border: 1.5px solid var(--field-line); border-radius: 10px;
+  padding: 11px 12px; width: 100%; min-width: 0; min-height: 48px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus-visible, select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 4.5px var(--accent); }
+input[aria-invalid="true"] { border-color: var(--bad); }
+input::placeholder { color: var(--muted); opacity: 1; }
+.secure-card { border: 1.5px dashed var(--field-line); border-radius: var(--radius); padding: 14px; display: grid; gap: 12px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px;
+  font-weight: 600; font-size: 17px; border: none; border-radius: var(--radius); padding: 14px 18px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink);
+  transition: background-color 0.15s ease;
+}
+.btn:hover:not([disabled]) { background: var(--accent-hover); }
+.btn[disabled] { cursor: progress; opacity: 0.8; }
+.btn .spinner { border-color: currentColor; border-top-color: transparent; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+.btn.ghost:hover:not([disabled]) { background: var(--accent-soft); }
+.banner { border-radius: var(--radius); padding: 14px 16px; font-size: 15px; display: grid; gap: 2px; }
+.banner.bad { background: var(--bad-soft); color: var(--bad); }
+.banner.info { background: var(--accent-soft); color: var(--ink); }
+.banner b { font-weight: 600; }
+.steps { margin: 0; padding-left: 22px; display: grid; gap: 4px; color: var(--muted); }
+.steps li::marker { font-variant-numeric: normal; }
+.instr { border: 1.5px solid var(--line); border-radius: var(--radius); }
+.instr .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 10px 10px 10px 16px; border-top: 1px solid var(--line); }
+.instr .row:first-child { border-top: none; }
+.instr .k { grid-column: 1; font-size: 14px; color: var(--muted); }
+.instr .v { grid-column: 1; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.instr .copy { grid-column: 2; grid-row: 1 / span 2; }
+.copy {
+  min-height: 44px; min-width: 76px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface);
+  color: var(--accent); font-size: 15px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.copy:hover { border-color: var(--accent); }
+.copy[data-done] { background: var(--accent-soft); border-color: var(--accent-soft); }
+.qr { justify-self: center; padding: 14px; background: #FFFFFF; border-radius: var(--radius); border: 1px solid var(--line); }
+.waiting { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 15px; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--accent); animation: spin 0.9s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.done { display: grid; gap: 16px; min-width: 0; }
+.done-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--ok-soft); color: var(--ok); display: grid; place-items: center; }
+.receipt { margin: 0; border: 1.5px solid var(--line); border-radius: var(--radius); padding: 6px 0; }
+.receipt div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 16px; }
+.receipt dt { color: var(--muted); }
+.receipt dd { margin: 0; text-align: right; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+.demo-note { font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; display: grid; gap: 4px; }
+.demo-note b { color: var(--ink); font-weight: 600; }
+.demo-note code { font-family: var(--font-figure); font-size: 13px; color: var(--ink); }
+.foot { display: grid; gap: 2px; justify-items: center; text-align: center; font-size: 14px; color: var(--muted); }
+.foot .brand { font-weight: 600; color: var(--ink); }
+.foot svg { vertical-align: -2px; margin-right: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+  .spinner, .ticket-stub.live .dot { animation: none; }
+}
+</style>
+
+<main class="checkout" id="app">
+  <div class="card">
+    <header class="merchant">
+      <div class="merchant-mark" id="merchant-mark" aria-hidden="true"></div>
+      <div>
+        <div class="merchant-name" id="merchant-name">Cargando…</div>
+        <div class="merchant-rif" id="merchant-rif" translate="no"></div>
+      </div>
+    </header>
+
+    <section class="order" aria-label="Pedido">
+      <p class="order-k">Total del pedido</p>
+      <p class="price" id="price">…</p>
+      <p class="desc" id="desc"></p>
+    </section>
+
+
+    <section class="ticket" id="charge-box" aria-label="Lo que vas a pagar" hidden>
+      <div class="ticket-main">
+        <span class="ticket-k" id="charge-method"></span>
+        <span class="ticket-amount" id="charge-amount"></span>
+        <span class="ticket-line" id="rate-row" hidden><span id="rate-label"></span>: <span class="fig" id="rate-value"></span></span>
+        <span class="ticket-line" id="igtf-row" hidden>Incluye IGTF 3 %: <span class="fig" id="igtf-amount"></span></span>
+      </div>
+      <div class="ticket-tear" id="ticket-tear" aria-hidden="true"></div>
+      <div class="ticket-stub" id="rate-chip"><span class="dot" aria-hidden="true"></span><span id="rate-chip-text"></span></div>
+    </section>
+    <section class="pay" id="pay"></section>
+  </div>
+
+  <footer class="foot">
+    <span><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Pago procesado por <span class="brand" id="brand-name" translate="no"></span> con conexión cifrada</span>
+    <span id="ref-line"></span>
+  </footer>
+  <p class="sr-only" id="status" role="status" aria-live="polite"></p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Marca de la pasarela: nombre provisional, se cambia solo aquí
+  // ---------------------------------------------------------------------------
+  const BRAND = { name: 'Paguara' };
+
+  // ---------------------------------------------------------------------------
+  // Catálogo de métodos (mismo orden y monedas que src/payment-intents/payment-methods.ts)
+  // ---------------------------------------------------------------------------
+  const METHODS = [
+    { type: 'pago_movil_c2p', name: 'Pago Móvil', sub: 'Con la clave de pago de tu banco', cur: 'VES' },
+    { type: 'pago_movil_p2p', name: 'Transferencia Pago Móvil', sub: 'Desde la app de tu banco', cur: 'VES' },
+    { type: 'zelle', name: 'Zelle', sub: 'Desde tu banco en EE. UU.', cur: 'USD' },
+    { type: 'usdt_trc20', name: 'USDT', sub: 'Red TRON (TRC-20)', cur: 'USDT' },
+    { type: 'card_international', name: 'Tarjeta internacional', sub: 'Visa, Mastercard o Amex', cur: 'USD' },
+    { type: 'cash', name: 'Efectivo en dólares', sub: 'En una taquilla aliada', cur: 'USD' },
+  ];
+  const BANKS = [
+    ['0102', 'Banco de Venezuela'], ['0105', 'Mercantil'], ['0108', 'BBVA Provincial'], ['0134', 'Banesco'],
+    ['0191', 'BNC'], ['0172', 'Bancamiga'], ['0114', 'Bancaribe'], ['0151', 'BFC'], ['0174', 'Banplus'],
+    ['0163', 'Banco del Tesoro'], ['0175', 'Banco Digital de los Trabajadores'], ['0104', 'Venezolano de Crédito'],
+  ];
+  const PREFIXES = ['0412', '0414', '0416', '0422', '0424', '0426'];
+  const EXP = { VES: 2, USD: 2, EUR: 2, USDT: 6 };
+  const SYMBOL = { VES: 'Bs', USD: 'USD', EUR: 'EUR', USDT: 'USDT' };
+  const CUR_NAME = { VES: 'Bs', USD: 'USD', USDT: 'USDT' };
+  const RATE_NAMES = { BCV: 'Tasa BCV', BINANCE_P2P: 'Tasa USDT (Binance P2P)', EXCHANGE: 'Tasa del exchange', PARALLEL: 'Tasa' };
+  const ERRORS = {
+    insufficient_funds: 'Tu banco rechazó el pago por fondos insuficientes. Prueba con otra cuenta u otro método.',
+    invalid_c2p_token: 'La clave de pago no es válida o ya venció. Genera una nueva en la app de tu banco y vuelve a pagar.',
+    do_not_honor: 'Tu banco no autorizó el pago. Llama a tu banco o prueba con otro método.',
+    card_declined: 'La tarjeta fue rechazada. Prueba con otra tarjeta u otro método.',
+    action_expired: 'No recibimos la transferencia a tiempo. Elige un método y vuelve a intentarlo.',
+    bank_unavailable: 'El banco no está respondiendo. Espera unos minutos o usa otro método.',
+    fx_quote_expired: 'La tasa venció antes de confirmar. Actualizamos el monto: revísalo y vuelve a pagar.',
+    payment_intent_expired: 'Este enlace de pago venció. Pídele uno nuevo al comercio.',
+    resource_missing: 'No encontramos este pago. Revisa el enlace que te envió el comercio.',
+  };
+  const FIELD_ERRORS = {
+    doc: 'Escribe la cédula solo con números, entre 6 y 9 dígitos.',
+    phone: 'Escribe los 7 dígitos del teléfono, sin la operadora.',
+    otp: 'Escribe la clave de pago que te dio tu banco, de 4 a 8 dígitos.',
+  };
+
+  // ---------------------------------------------------------------------------
+  // Formato venezolano (3.650,00). Los montos llegan como enteros en unidades mínimas
+  // y se formatean sobre el string, sin pasar por float.
+  // ---------------------------------------------------------------------------
+  function fmt(minor, cur, opts) {
+    const exp = EXP[cur];
+    let s = String(minor).replace(/^0+(?=\d)/, '');
+    s = s.padStart(exp + 1, '0');
+    let int = s.slice(0, s.length - exp), frac = s.slice(s.length - exp);
+    if (cur === 'USDT') frac = frac.replace(/0+$/, '').padEnd(2, '0');
+    int = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const num = frac ? int + ',' + frac : int;
+    return opts && opts.bare ? num : SYMBOL[cur] + ' ' + num;
+  }
+  function fmtRate(rate) {
+    const [i, f = ''] = String(rate).split('.');
+    return i.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + f.padEnd(2, '0');
+  }
+  const $ = (id) => document.getElementById(id);
+  function el(tag, attrs, children) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of [].concat(children || [])) if (c != null) n.append(c);
+    return n;
+  }
+  function announce(msg) {
+    const s = $('status');
+    s.textContent = '';
+    setTimeout(() => { s.textContent = msg; }, 50);
+  }
+  const spinner = () => el('span', { class: 'spinner', 'aria-hidden': 'true' });
+
+  // ---------------------------------------------------------------------------
+  // Cliente de la API real: /v1/checkout/payment_intents con pk_ + client_secret
+  // ---------------------------------------------------------------------------
+  function realApi(piId, clientSecret, pk) {
+    const base = '/v1/checkout/payment_intents/' + encodeURIComponent(piId);
+    async function call(method, path, body) {
+      const res = await fetch(base + path + (method === 'GET' ? '?client_secret=' + encodeURIComponent(clientSecret) : ''), {
+        method,
+        headers: Object.assign({ Authorization: 'Bearer ' + pk }, method === 'POST'
+          ? { 'Content-Type': 'application/json', 'Idempotency-Key': (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())) }
+          : {}),
+        body: body ? JSON.stringify(Object.assign({ client_secret: clientSecret }, body)) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw data.error || { code: 'unknown', message: 'Error ' + res.status };
+      // attach/confirm no repiten los datos del comercio; se conservan los del primer GET
+      if (data.merchant) merchant = data.merchant; else data.merchant = merchant;
+      return data;
+    }
+    let merchant = null;
+    return {
+      demo: false,
+      retrieve: () => call('GET', ''),
+      attach: (type) => call('POST', '/attach', { payment_method_type: type }),
+      confirm: (details) => call('POST', '/confirm', { payment_method_details: details }),
+      simulateRailSuccess: null,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Modo demostración: imita las respuestas de la API con la misma aritmética
+  // (bigint, half-even) y el mismo SandboxRail. No hay servidor detrás.
+  // ---------------------------------------------------------------------------
+  function demoApi() {
+    const RATES = { 'USD/VES': '36.5', 'USDT/VES': '38.2', 'USDT/USD': '0.999' };
+    const SOURCE = { 'USD/VES': 'BCV', 'USDT/VES': 'BINANCE_P2P', 'USDT/USD': 'EXCHANGE' };
+    const CFG = {
+      pago_movil_c2p: { cur: 'VES', bps: 150, fixed: 5n, tax: 1600, igtf: 0, ttl: 300 },
+      pago_movil_p2p: { cur: 'VES', bps: 150, fixed: 5n, tax: 1600, igtf: 0, ttl: 900 },
+      zelle: { cur: 'USD', bps: 250, fixed: 25n, tax: 0, igtf: 0, ttl: 1800 },
+      usdt_trc20: { cur: 'USDT', bps: 120, fixed: 10n, tax: 0, igtf: 0, ttl: 1800 },
+      card_international: { cur: 'USD', bps: 490, fixed: 40n, tax: 0, igtf: 0, ttl: 900 },
+      cash: { cur: 'USD', bps: 200, fixed: 25n, tax: 0, igtf: 300, ttl: 86400 },
+    };
+    const S = 10n ** 12n;
+    const rateScaled = (r) => { const [i, f = ''] = r.split('.'); return BigInt(i) * S + BigInt((f + '0'.repeat(12)).slice(0, 12)); };
+    const halfEven = (n, d) => { const q = n / d, r = n % d; return (r * 2n > d || (r * 2n === d && q % 2n === 1n)) ? q + 1n : q; };
+    const bps = (a, b) => halfEven(a * BigInt(b), 10000n);
+    function conv(amount, from, to) {
+      if (from === to) return { amount, rate: null };
+      const direct = RATES[from + '/' + to], inverse = RATES[to + '/' + from];
+      const e = EXP[to] - EXP[from];
+      if (direct) {
+        let n = amount * rateScaled(direct), d = S;
+        if (e >= 0) n *= 10n ** BigInt(e); else d *= 10n ** BigInt(-e);
+        return { amount: halfEven(n, d), rate: direct, source: SOURCE[from + '/' + to] };
+      }
+      let n = amount * S, d = rateScaled(inverse);
+      if (e >= 0) n *= 10n ** BigInt(e); else d *= 10n ** BigInt(-e);
+      return { amount: halfEven(n, d), rate: inverse, source: SOURCE[to + '/' + from] };
+    }
+    const pi = {
+      id: 'pi_demo7f3a91c2e8', object: 'payment_intent', status: 'requires_payment_method',
+      amount: '2500', currency: 'USD', description: 'Pedido #1043: 1 kg de café de Caripe, molido',
+      payment_method_type: null, charge: null, fx: null, next_action: null, last_payment_error: null,
+      expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(),
+      merchant: { name: 'Café El Ávila (ejemplo)', rif: 'J-40123456-7' },
+    };
+    let attempt = 0;
+    const clone = () => JSON.parse(JSON.stringify(pi));
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    return {
+      demo: true,
+      async retrieve() { await wait(250); return clone(); },
+      async attach(type) {
+        await wait(350);
+        const c = CFG[type];
+        const price = BigInt(pi.amount);
+        const q = conv(price, pi.currency, c.cur);
+        const fixed = c.fixed === 0n || c.cur === 'USD' ? c.fixed : conv(c.fixed, 'USD', c.cur).amount;
+        const fee = bps(q.amount, c.bps) + fixed, tax = bps(fee, c.tax), igtf = bps(q.amount, c.igtf);
+        Object.assign(pi, {
+          status: 'requires_confirmation', payment_method_type: type, last_payment_error: null, next_action: null,
+          charge: { amount: String(q.amount + igtf), currency: c.cur, igtf: String(igtf) },
+          fx: q.rate ? { rate: q.rate, source: q.source, expires_at: new Date(Date.now() + c.ttl * 1000).toISOString(), frozen: false } : null,
+          _net: String(q.amount - fee - tax),
+        });
+        return clone();
+      },
+      async confirm(details) {
+        await wait(900);
+        if (pi.fx && new Date(pi.fx.expires_at) <= new Date()) throw { code: 'fx_quote_expired', message: ERRORS.fx_quote_expired };
+        attempt++;
+        const ref = 'sbx_' + pi.id + '_' + attempt;
+        if (pi.fx) pi.fx.frozen = true;
+        const phone = String(details.phone || '');
+        if (phone.endsWith('0002') || phone.endsWith('0003')) {
+          const code = phone.endsWith('0002') ? 'insufficient_funds' : 'invalid_c2p_token';
+          Object.assign(pi, { status: 'requires_payment_method', last_payment_error: { code, message: code } });
+          if (pi.fx) pi.fx.frozen = false;
+          return clone();
+        }
+        const amt = pi.charge.amount, cur = pi.charge.currency;
+        const actions = {
+          pago_movil_p2p: { type: 'pago_movil_transfer', bank: '0102', phone: '04140000000', rif: 'J-00000000-0', amount: amt, currency: cur, reference_hint: pi.id.slice(-6) },
+          zelle: { type: 'zelle_transfer', email: 'pagos@example.com', memo: pi.id.slice(-8), amount: amt, currency: cur },
+          usdt_trc20: { type: 'crypto_transfer', network: 'TRON', address: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE', amount: amt, currency: cur },
+          cash: { type: 'cash_voucher', code: '7731 0425 9018', amount: amt, currency: cur },
+        };
+        if (actions[pi.payment_method_type]) {
+          Object.assign(pi, { status: 'requires_action', next_action: actions[pi.payment_method_type] });
+        } else {
+          Object.assign(pi, { status: 'succeeded', _ref: ref });
+        }
+        return clone();
+      },
+      async simulateRailSuccess() {
+        await wait(1200);
+        Object.assign(pi, { status: 'succeeded', next_action: null, _ref: 'match_' + pi.id.slice(-6) });
+        return clone();
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Estado y render
+  // ---------------------------------------------------------------------------
+  const params = new URLSearchParams(location.search);
+  const api = params.get('pi') && params.get('cs') && params.get('pk')
+    ? realApi(params.get('pi'), params.get('cs'), params.get('pk'))
+    : demoApi();
+  // busy: false | 'attach' | 'pay'; fieldError: { id, message } para errores de validación en línea
+  let state = { pi: null, selected: null, busy: false, error: null, fieldError: null };
+  let poller = null, lastScreen = null, pendingFocus = null, lastErr = null;
+
+  function setState(patch) { state = Object.assign({}, state, patch); render(); }
+
+  // Dirección de la tasa: 1 USD = 36,50 Bs o 1 USDT = 0,999 USD, según cuál reproduce el monto cobrado
+  function rateText(pi) {
+    const from = pi.currency, to = pi.charge.currency;
+    const price = Number(pi.amount) / 10 ** EXP[from];
+    const got = (Number(pi.charge.amount) - Number(pi.charge.igtf || 0)) / 10 ** EXP[to];
+    const r = Number(pi.fx.rate);
+    const multiplies = Math.abs(price * r - got) <= Math.abs(price / r - got);
+    return multiplies
+      ? '1 ' + CUR_NAME[from] + ' = ' + fmtRate(pi.fx.rate) + ' ' + CUR_NAME[to]
+      : '1 ' + CUR_NAME[to] + ' = ' + fmtRate(pi.fx.rate) + ' ' + CUR_NAME[from];
+  }
+
+  function renderSummary() {
+    const pi = state.pi;
+    if (!pi) return;
+    const m = pi.merchant || { name: 'Comercio', rif: '' };
+    $('merchant-name').textContent = m.name;
+    $('merchant-rif').textContent = m.rif ? 'RIF ' + m.rif : '';
+    $('merchant-mark').textContent = (m.name.trim()[0] || 'C').toUpperCase();
+    const price = $('price');
+    price.textContent = fmt(pi.amount, pi.currency, { bare: true });
+    price.append(el('small', { text: CUR_NAME[pi.currency] || pi.currency }));
+    $('desc').textContent = pi.description || '';
+    $('ref-line').replaceChildren('Referencia ', el('span', { translate: 'no', text: pi.id }));
+
+    const box = $('charge-box');
+    const show = !!pi.charge && !['succeeded', 'settled', 'canceled'].includes(pi.status);
+    box.dataset.show = show ? '1' : '';
+    if (!show) return;
+    const method = METHODS.find((x) => x.type === pi.payment_method_type);
+    $('charge-method').textContent = method ? 'Pagas con ' + method.name : 'Pagas';
+    $('charge-amount').textContent = fmt(pi.charge.amount, pi.charge.currency);
+    $('igtf-row').hidden = !(pi.charge.igtf && pi.charge.igtf !== '0');
+    if (pi.charge.igtf) $('igtf-amount').textContent = fmt(pi.charge.igtf, pi.charge.currency);
+    $('rate-row').hidden = !pi.fx;
+    if (pi.fx) {
+      $('rate-label').textContent = RATE_NAMES[pi.fx.source] || 'Tasa';
+      $('rate-value').textContent = rateText(pi);
+    }
+    tickRate();
+  }
+
+  function tickRate() {
+    const box = $('charge-box');
+    const chip = $('rate-chip');
+    const pi = state.pi;
+    const hasRate = !!(pi && pi.fx && pi.charge);
+    chip.hidden = !hasRate;
+    $('ticket-tear').hidden = !hasRate;
+    if (!hasRate) { box.classList.remove('expired'); return; }
+    if (pi.fx.frozen || ['processing', 'requires_action', 'succeeded', 'settled'].includes(pi.status)) {
+      box.classList.remove('expired'); chip.classList.remove('live');
+      $('rate-chip-text').textContent = 'Tasa congelada para este pago';
+      return;
+    }
+    const left = Math.max(0, Math.floor((new Date(pi.fx.expires_at) - Date.now()) / 1000));
+    box.classList.toggle('expired', left === 0);
+    chip.classList.toggle('live', left > 0);
+    const clock = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    $('rate-chip-text').textContent = left === 0 ? 'La tasa venció' : 'Tasa garantizada por ' + clock;
+    const btn = $('pay-btn');
+    if (btn && left === 0 && !btn.dataset.refresh) {
+      btn.dataset.refresh = '1';
+      btn.replaceChildren('Actualizar el monto');
+      announce('La tasa venció. Actualiza el monto antes de pagar.');
+    }
+  }
+
+  function errorBanner() {
+    const e = state.error || (state.pi && state.pi.last_payment_error);
+    if (!e) return null;
+    return el('div', { class: 'banner bad', role: 'alert' }, [el('b', { text: 'No se pudo completar el pago' }), el('span', { text: ERRORS[e.code] || e.message })]);
+  }
+
+  function methodPicker() {
+    const pi = state.pi;
+    return el('div', { class: 'methods', role: 'group', 'aria-labelledby': 'pay-h' }, METHODS.map((m) => {
+      const on = pi.payment_method_type === m.type && !!pi.charge;
+      const loading = state.busy === 'attach' && state.selected === m.type;
+      return el('button', {
+        class: 'method', type: 'button', id: 'm-' + m.type, 'aria-pressed': String(on), disabled: !!state.busy,
+        onclick: () => choose(m.type),
+      }, [
+        loading ? spinner() : el('span', { class: 'tick', 'aria-hidden': 'true' }),
+        el('span', { class: 'm-text' }, [el('span', { class: 'm-name', text: m.name }), el('span', { class: 'm-sub', text: m.sub })]),
+        el('span', { class: 'm-cur', text: 'en ' + CUR_NAME[m.cur] }),
+      ]);
+    }));
+  }
+
+  function input(attrs) {
+    const fe = state.fieldError && state.fieldError.id === attrs.id;
+    return el('input', Object.assign({ spellcheck: 'false', autocapitalize: 'off', translate: 'no', 'aria-invalid': fe ? 'true' : false,
+      'aria-describedby': [attrs.hint && attrs.id + '-hint', fe && attrs.id + '-err'].filter(Boolean).join(' ') || false }, attrs, { hint: false }));
+  }
+  function fieldError(id) {
+    const fe = state.fieldError && state.fieldError.id === id;
+    return fe ? el('span', { class: 'err', id: id + '-err', text: state.fieldError.message }) : null;
+  }
+
+  function methodForm(type) {
+    const f = el('form', { id: 'pay-form', novalidate: true, 'aria-label': 'Datos del pago' });
+    if (type === 'pago_movil_c2p') {
+      f.append(
+        el('div', { class: 'field' }, [el('label', { for: 'bank', text: 'Banco' }),
+          el('select', { id: 'bank', name: 'bank', required: true }, BANKS.map(([c, n]) => el('option', { value: c, text: n + ' (' + c + ')' })))]),
+        el('div', { class: 'field' }, [el('label', { for: 'doc', text: 'Cédula del titular' }),
+          el('div', { class: 'pair' }, [
+            el('select', { id: 'doc-type', name: 'doc_type', 'aria-label': 'Tipo de documento' }, [['V', 'V'], ['E', 'E'], ['J', 'J'], ['P', 'P']].map(([v, t]) => el('option', { value: v, text: t }))),
+            input({ id: 'doc', name: 'doc', inputmode: 'numeric', autocomplete: 'off', placeholder: '12345678…', required: true, pattern: '\\d{6,9}' })]),
+          fieldError('doc')]),
+        el('div', { class: 'field' }, [el('label', { for: 'phone', text: 'Teléfono afiliado a Pago Móvil' }),
+          el('div', { class: 'pair' }, [
+            el('select', { id: 'phone-prefix', name: 'phone_prefix', 'aria-label': 'Operadora' }, PREFIXES.map((p) => el('option', { value: p, text: p }))),
+            input({ id: 'phone', name: 'phone', type: 'tel', inputmode: 'numeric', autocomplete: 'tel-local', placeholder: '1234567…', required: true, pattern: '\\d{7}' })]),
+          fieldError('phone')]),
+        el('div', { class: 'field' }, [el('label', { for: 'otp', text: 'Clave de pago (C2P)' }),
+          input({ id: 'otp', name: 'otp', inputmode: 'numeric', autocomplete: 'one-time-code', placeholder: '6 dígitos…', required: true, pattern: '\\d{4,8}', hint: true }),
+          el('span', { class: 'hint', id: 'otp-hint', text: 'La generas en la app de tu banco, en la opción “Clave de pago” o “C2P”. No la guardamos.' }),
+          fieldError('otp')]),
+      );
+    } else if (type === 'card_international') {
+      f.append(el('div', { class: 'secure-card' }, [
+        el('div', { class: 'field' }, [el('label', { for: 'card', text: 'Número de tarjeta' }),
+          input({ id: 'card', name: 'cardnumber', inputmode: 'numeric', placeholder: '4242 4242 4242 4242…', autocomplete: 'cc-number' })]),
+        el('div', { class: 'pair', style: 'grid-template-columns: 1fr 1fr' }, [
+          el('div', { class: 'field' }, [el('label', { for: 'card-exp', text: 'Vencimiento' }), input({ id: 'card-exp', name: 'cc-exp', inputmode: 'numeric', placeholder: 'MM/AA…', autocomplete: 'cc-exp' })]),
+          el('div', { class: 'field' }, [el('label', { for: 'card-cvc', text: 'CVC' }), input({ id: 'card-cvc', name: 'cvc', inputmode: 'numeric', placeholder: '123…', autocomplete: 'cc-csc' })])]),
+        el('span', { class: 'hint', text: 'Estos campos los aloja el procesador internacional. Los datos de la tarjeta no pasan por nuestros servidores.' }),
+      ]));
+    } else {
+      const copy = {
+        pago_movil_p2p: 'Al continuar te mostramos los datos para hacer el Pago Móvil desde la app de tu banco. Lo detectamos solos en segundos.',
+        zelle: 'Al continuar te mostramos el correo y el concepto que debes usar en Zelle.',
+        usdt_trc20: 'Al continuar te mostramos la dirección y el monto exacto. Envía solo USDT por la red TRON.',
+        cash: 'Al continuar te damos un código para pagar en efectivo en una taquilla aliada. El IGTF del 3 % ya está incluido.',
+      }[type];
+      f.append(el('p', { class: 'banner info', text: copy }));
+    }
+    const pi = state.pi;
+    const cta = type === 'pago_movil_c2p' || type === 'card_international'
+      ? 'Pagar ' + fmt(pi.charge.amount, pi.charge.currency)
+      : 'Continuar';
+    const paying = state.busy === 'pay';
+    f.append(el('button', { class: 'btn', id: 'pay-btn', type: 'submit', disabled: !!state.busy, 'aria-busy': paying ? 'true' : false },
+      paying ? [spinner(), 'Procesando…'] : [cta]));
+    f.addEventListener('submit', (e) => { e.preventDefault(); onPay(type, f); });
+    return f;
+  }
+
+  function copyRow(label, value, display) {
+    const b = el('button', { class: 'copy', type: 'button', text: 'Copiar', 'aria-label': 'Copiar ' + label.toLowerCase() });
+    const v = el('span', { class: 'v', translate: 'no', text: display || value });
+    b.addEventListener('click', () => {
+      const ok = () => { b.textContent = 'Copiado'; b.dataset.done = '1'; announce(label + ' copiado'); };
+      try { navigator.clipboard.writeText(value).then(ok, () => selectText(v)); } catch (_) { selectText(v); }
+    });
+    return el('div', { class: 'row' }, [el('span', { class: 'k', text: label }), v, b]);
+  }
+  function plainRow(label, value) {
+    return el('div', { class: 'row' }, [el('span', { class: 'k', text: label }), el('span', { class: 'v', text: value })]);
+  }
+  function selectText(node) { const r = document.createRange(); r.selectNodeContents(node); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+  function rawAmount(minor, cur) { return fmt(minor, cur, { bare: true }); }
+
+  function instructions(na) {
+    const rows = [];
+    let title = 'Completa el pago', steps = null, qr = null;
+    if (na.type === 'pago_movil_transfer') {
+      title = 'Haz el Pago Móvil con estos datos';
+      steps = ['Abre la app de tu banco y entra en Pago Móvil.', 'Copia los datos de abajo y envía el monto exacto.', 'Vuelve aquí: el pago se confirma solo.'];
+      const bank = BANKS.find(([c]) => c === na.bank);
+      rows.push(plainRow('Banco', (bank ? bank[1] + ' ' : '') + '(' + na.bank + ')'));
+      rows.push(copyRow('Teléfono', na.phone));
+      rows.push(copyRow('RIF', na.rif));
+      rows.push(copyRow('Monto exacto', rawAmount(na.amount, na.currency), fmt(na.amount, na.currency)));
+      rows.push(copyRow('Concepto', na.reference_hint));
+    } else if (na.type === 'zelle_transfer') {
+      title = 'Envía el Zelle con estos datos';
+      rows.push(copyRow('Correo', na.email));
+      rows.push(copyRow('Monto exacto', rawAmount(na.amount, na.currency), fmt(na.amount, na.currency)));
+      rows.push(copyRow('Concepto (memo)', na.memo));
+    } else if (na.type === 'crypto_transfer') {
+      title = 'Envía USDT por la red ' + na.network;
+      rows.push(plainRow('Red', na.network === 'TRON' ? 'TRON (TRC-20)' : na.network));
+      rows.push(copyRow('Dirección', na.address));
+      rows.push(copyRow('Monto exacto', rawAmount(na.amount, na.currency), fmt(na.amount, na.currency)));
+      qr = el('div', { class: 'qr', id: 'qr', role: 'img', 'aria-label': 'Código QR de la dirección USDT' });
+    } else if (na.type === 'cash_voucher') {
+      title = 'Paga en una taquilla aliada';
+      rows.push(copyRow('Código', na.code));
+      if (na.amount) rows.push(plainRow('Monto en efectivo', fmt(na.amount, na.currency)));
+    } else if (na.type === 'three_d_secure') {
+      title = 'Tu banco necesita verificar el pago';
+    }
+    const out = [el('h1', { id: 'pay-h', tabindex: '-1', text: title })];
+    if (steps) out.push(el('ol', { class: 'steps' }, steps.map((s) => el('li', { text: s }))));
+    if (qr) out.push(qr);
+    out.push(el('div', { class: 'instr' }, rows));
+    out.push(el('div', { class: 'waiting' }, [spinner(), el('span', { text: api.demo ? 'Esperando tu pago…' : 'Esperando tu pago. Esta página se actualiza sola.' })]));
+    if (api.demo) {
+      out.push(el('button', { class: 'btn ghost', id: 'simulate-btn', type: 'button', disabled: !!state.busy,
+        onclick: async () => {
+          setState({ busy: 'pay' });
+          setState({ pi: await api.simulateRailSuccess(), busy: false });
+        } }, state.busy ? [spinner(), 'Simulando…'] : ['Simular que el pago llegó']));
+    }
+    return out;
+  }
+
+  function success() {
+    const pi = state.pi;
+    const method = METHODS.find((x) => x.type === pi.payment_method_type);
+    const rows = [
+      ['Comercio', pi.merchant ? pi.merchant.name : ''],
+      ['Pagaste', fmt(pi.charge.amount, pi.charge.currency)],
+      ['Método', method ? method.name : ''],
+      pi.fx ? ['Tasa aplicada', rateText(pi) + ' (' + (RATE_NAMES[pi.fx.source] || pi.fx.source).replace(/^Tasa /, '') + ')'] : null,
+      ['Referencia', pi.id],
+      ['Fecha', new Date().toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' })],
+    ].filter(Boolean);
+    return [el('div', { class: 'done' }, [
+      el('div', { class: 'done-mark', 'aria-hidden': 'true' }, [svgCheck()]),
+      el('h1', { id: 'pay-h', tabindex: '-1', text: 'Pago confirmado' }),
+      el('p', { text: 'Le avisamos a ' + (pi.merchant ? pi.merchant.name : 'el comercio') + '. Guarda esta referencia por si la necesitas.' }),
+      el('dl', { class: 'receipt' }, rows.map(([k, v]) => el('div', {}, [el('dt', { text: k }), el('dd', { text: v, translate: k === 'Referencia' ? 'no' : false })]))),
+    ])];
+  }
+  function svgCheck() {
+    const ns = 'http://www.w3.org/2000/svg';
+    const s = document.createElementNS(ns, 'svg'); s.setAttribute('width', '28'); s.setAttribute('height', '28'); s.setAttribute('viewBox', '0 0 24 24');
+    const p = document.createElementNS(ns, 'path'); p.setAttribute('d', 'M5 12.5l4.5 4.5L19 7.5'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', 'currentColor'); p.setAttribute('stroke-width', '2.5'); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round');
+    s.append(p); return s;
+  }
+
+  function demoNote() {
+    if (!api.demo) return null;
+    return el('div', { class: 'demo-note' }, [
+      el('b', { text: 'Modo de demostración' }),
+      el('span', { text: 'Montos y tasas de ejemplo; no se mueve dinero. La aritmética es la misma del servidor.' }),
+      el('span', {}, ['En Pago Móvil, un teléfono terminado en ', el('code', { text: '0002' }), ' simula fondos insuficientes y uno terminado en ', el('code', { text: '0003' }), ' una clave inválida.']),
+    ]);
+  }
+
+  function screenOf(pi) {
+    if (!pi) return 'loading';
+    if (pi.status === 'succeeded' || pi.status === 'settled') return 'done';
+    if (pi.status === 'canceled') return 'canceled';
+    if (pi.status === 'requires_action' && pi.next_action) return 'action';
+    if (pi.status === 'processing') return 'processing';
+    return 'pick';
+  }
+
+  function render() {
+    renderSummary();
+    const pay = $('pay');
+    // Re-render conserva lo que el pagador ya escribió (menos la clave C2P tras un rechazo: es de un solo uso)
+    const kept = {};
+    pay.querySelectorAll('input[id], select[id]').forEach((i) => { kept[i.id] = i.value; });
+    if (state.pi && state.pi.last_payment_error) delete kept.otp;
+    const hadFocus = (document.activeElement && pay.contains(document.activeElement) ? document.activeElement.id : null) || pendingFocus;
+    const ticket = $('charge-box');
+    pay.before(ticket); // replaceChildren no debe destruir el boleto
+    ticket.hidden = true; // solo se ve junto a la acción que cotiza
+    pay.replaceChildren();
+    const pi = state.pi;
+    const screen = screenOf(pi);
+    const changed = lastScreen !== null && lastScreen !== 'loading' && screen !== lastScreen;
+    lastScreen = screen;
+    after(() => {
+      Object.entries(kept).forEach(([id, v]) => { const n = document.getElementById(id); if (n && !n.value) n.value = v; });
+      if (state.fieldError) { const n = document.getElementById(state.fieldError.id); if (n) n.focus(); }
+      else if (changed) { const h = document.getElementById('pay-h'); if (h) h.focus(); }
+      const banner = pay.querySelector('.banner.bad');
+      const errKey = banner ? banner.textContent + (state.pi && state.pi.id) : null;
+      if (banner && errKey !== lastErr && !state.fieldError) banner.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      lastErr = errKey;
+      if (state.fieldError || changed) return;
+      if (hadFocus) { const n = document.getElementById(hadFocus); if (n && n.disabled) pendingFocus = hadFocus; else { pendingFocus = null; if (n) n.focus({ preventScroll: true }); } }
+    });
+
+    if (screen === 'loading') {
+      if (state.error) pay.append(errorBanner());
+      else pay.append(el('div', { class: 'waiting' }, [spinner(), el('span', { text: 'Cargando el pago…' })]));
+      return;
+    }
+    if (screen === 'done') { pay.append(...success()); stopPolling(); return; }
+    if (screen === 'canceled') {
+      pay.append(el('h1', { id: 'pay-h', tabindex: '-1', text: 'Este pago ya no está disponible' }), el('p', { text: 'El enlace venció o el comercio lo canceló. Pídele uno nuevo.' }));
+      return;
+    }
+    if (screen === 'action') {
+      pay.append(...instructions(pi.next_action));
+      pay.querySelector('h1').after(ticket);
+      ticket.hidden = !ticket.dataset.show;
+      if (!api.demo) startPolling();
+      const qr = document.getElementById('qr');
+      if (qr && window.QRCode) new QRCode(qr, { text: pi.next_action.address, width: 176, height: 176 });
+      pay.append(demoNote() || '');
+      return;
+    }
+    if (screen === 'processing') {
+      pay.append(el('h1', { id: 'pay-h', tabindex: '-1', text: 'Procesando tu pago' }), el('div', { class: 'waiting' }, [spinner(), el('span', { text: 'Estamos esperando la respuesta del banco.' })]));
+      if (!api.demo) startPolling();
+      return;
+    }
+    pay.append(el('h1', { id: 'pay-h', tabindex: '-1', text: '¿Cómo quieres pagar?' }));
+    const err = errorBanner();
+    if (err) pay.append(err);
+    pay.append(methodPicker());
+    const selected = state.selected || pi.payment_method_type;
+    if (selected && pi.charge && pi.payment_method_type === selected) { pay.append(ticket, methodForm(selected)); ticket.hidden = !ticket.dataset.show; }
+    pay.append(demoNote() || '');
+  }
+  const after = (fn) => (window.requestAnimationFrame ? requestAnimationFrame(fn) : setTimeout(fn, 0));
+
+  // ---------------------------------------------------------------------------
+  // Acciones
+  // ---------------------------------------------------------------------------
+  async function choose(type) {
+    setState({ busy: 'attach', selected: type, error: null, fieldError: null });
+    try {
+      const pi = await api.attach(type);
+      setState({ pi, busy: false });
+      announce('Vas a pagar ' + fmt(pi.charge.amount, pi.charge.currency) + ' con ' + METHODS.find((m) => m.type === type).name);
+    } catch (e) { setState({ busy: false, error: e }); }
+  }
+
+  function details(type) {
+    if (type === 'pago_movil_c2p') {
+      return {
+        bank: $('bank').value,
+        document: $('doc-type').value + '-' + $('doc').value.trim(),
+        phone: $('phone-prefix').value + $('phone').value.trim(),
+        otp: $('otp').value.trim(),
+      };
+    }
+    if (type === 'card_international') return { token: 'tok_visa' }; // en producción: token del iframe del procesador
+    return {};
+  }
+
+  async function onPay(type, form) {
+    const btn = $('pay-btn');
+    if (btn && btn.dataset.refresh) return choose(type);
+    if (type === 'pago_movil_c2p') {
+      const bad = [...form.querySelectorAll('input[required]')].find((i) => !new RegExp('^' + i.pattern + '$').test(i.value.trim()));
+      if (bad) { setState({ fieldError: { id: bad.id, message: FIELD_ERRORS[bad.id] }, error: null }); return; }
+    }
+    const d = details(type);
+    setState({ busy: 'pay', error: null, fieldError: null });
+    try {
+      // Tras un rechazo el intent vuelve a requires_payment_method: se vuelve a adjuntar el método (re-cotiza)
+      if (state.pi.status === 'requires_payment_method') await api.attach(type);
+      const pi = await api.confirm(d);
+      setState({ pi, busy: false });
+      if (pi.status === 'succeeded') announce('Pago confirmado');
+    } catch (e) {
+      if (e.code === 'fx_quote_expired') { setState({ pi: await api.attach(type), busy: false, error: e }); return; }
+      setState({ busy: false, error: e });
+    }
+  }
+
+  function startPolling() {
+    if (poller) return;
+    poller = setInterval(async () => {
+      try {
+        const pi = await api.retrieve();
+        if (pi.status !== state.pi.status) { setState({ pi }); if (pi.status === 'succeeded') announce('Pago confirmado'); }
+      } catch (_) { /* reintenta en el siguiente ciclo */ }
+    }, 4000);
+  }
+  function stopPolling() { if (poller) { clearInterval(poller); poller = null; } }
+
+  async function boot() {
+    $('brand-name').textContent = BRAND.name;
+    document.title = 'Pagar con ' + BRAND.name;
+    render();
+    try { setState({ pi: await api.retrieve() }); }
+    catch (e) { setState({ error: e }); }
+    setInterval(tickRate, 1000);
+  }
+  boot();
+})();
+</script>
