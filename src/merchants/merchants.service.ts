@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { ApiError } from '../common/errors';
 import { Currency } from '../common/money';
 import { PG_POOL } from '../database/database';
+import { assertModuleActive, settlementModuleFor } from '../capabilities/capability-state';
 
 export type MerchantStatus = 'pending_kyc' | 'active' | 'restricted' | 'closed';
 
@@ -147,6 +148,10 @@ export class MerchantsService {
   async setSettlementRules(merchantId: string, sourceCurrency: Currency, rules: SettlementRule[]) {
     const total = rules.reduce((s, r) => s + r.bps, 0);
     if (total !== 10_000) throw new ApiError(400, 'settlement_rules_invalid', `Los porcentajes deben sumar 100 % (suman ${total / 100} %)`);
+    for (const r of rules) {
+      const mod = settlementModuleFor(sourceCurrency, r.targetCurrency);
+      if (mod) await assertModuleActive(this.pool, merchantId, mod);
+    }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');

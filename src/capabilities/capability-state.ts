@@ -7,10 +7,21 @@ import { METHOD_NAMES, MethodConfig, PAYMENT_METHODS, PaymentMethodType, isPayme
  * comercio está en SQL (merchants.capability_state); aquí solo se lee y se escribe.
  */
 export type CapabilityState = 'unavailable' | 'not_granted' | 'pending_review' | 'blocked' | 'disabled' | 'active';
-export type ModuleKey = 'payment_links' | 'webhooks';
+export type ModuleKey = 'payment_links' | 'webhooks' | 'settlement_usdt' | 'settlement_usd';
 export type Db = Pool | PoolClient;
 
-export const MODULE_NAMES: Record<ModuleKey, string> = { payment_links: 'Links de pago', webhooks: 'Webhooks' };
+export const MODULE_NAMES: Record<ModuleKey, string> = {
+  payment_links: 'Links de pago', webhooks: 'Webhooks',
+  settlement_usdt: 'Liquidar en USDT', settlement_usd: 'Liquidar en dólares',
+};
+
+/** Módulo que exige convertir una liquidación de `source` a `target` (a bolívares o sin conversión: ninguno). */
+export function settlementModuleFor(source: string, target: string): ModuleKey | null {
+  if (source === target) return null;
+  if (target === 'USDT') return 'settlement_usdt';
+  if (target === 'USD') return 'settlement_usd';
+  return null;
+}
 
 export interface CapabilityRow {
   key: string;

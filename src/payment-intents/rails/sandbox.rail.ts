@@ -5,7 +5,7 @@ import { RailAdapter, RailChargeRequest, RailResult } from './rail-adapter';
  * prueba de Stripe:
  *   teléfono termina en 0002 → insufficient_funds
  *   teléfono termina en 0003 → invalid_c2p_token
- *   métodos "push" (P2P, Zelle, USDT, efectivo) → requires_action con instrucciones
+ *   métodos "push" (P2P, Zelle, Banesco Panamá, USDT, efectivo) → requires_action con instrucciones
  *   token de tarjeta "tok_3ds" → requires_action (3DS)
  *   resto → succeeded
  */
@@ -27,6 +27,10 @@ export class SandboxRail implements RailAdapter {
         return { status: 'requires_action', reference: ref, nextAction: {
           type: 'zelle_transfer', email: 'pagos@example.com', memo: req.paymentIntentId.slice(-8),
           amount: req.amount.toString(), currency: req.currency } };
+      case 'banesco_panama':
+        return { status: 'requires_action', reference: ref, nextAction: {
+          type: 'bank_transfer', bank: 'Banesco (Panamá), S.A.', account: '201800000000', account_type: 'Corriente',
+          holder: 'Paguara Panamá, S.A.', memo: req.paymentIntentId.slice(-8), amount: req.amount.toString(), currency: req.currency } };
       case 'usdt_trc20':
       case 'usdt_polygon':
         return { status: 'requires_action', reference: ref, nextAction: {

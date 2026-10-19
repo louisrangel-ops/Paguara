@@ -156,6 +156,33 @@ export class CapabilitiesService {
     });
   }
 
+  /** Catálogo de plataforma con cuántos comercios tienen cada capacidad activa. */
+  async listGlobal() {
+    const { rows } = await this.pool.query<{ key: string; kind: 'method' | 'module'; global_enabled: boolean; default_for_new: boolean;
+                                             merchants_active: number; pending: number }>(
+      `SELECT pc.key, pc.kind, pc.global_enabled, pc.default_for_new,
+              count(mc.merchant_id) FILTER (WHERE mc.platform_status = 'allowed' AND mc.merchant_enabled)::int AS merchants_active,
+              count(mc.merchant_id) FILTER (WHERE mc.platform_status = 'pending_review')::int AS pending
+         FROM platform.capabilities pc LEFT JOIN merchants.capabilities mc ON mc.key = pc.key
+        GROUP BY pc.key`);
+    const order = [...Object.keys(PAYMENT_METHODS), ...Object.keys(MODULE_NAMES)];
+    const pos = (k: string) => (order.indexOf(k) + 1 || order.length + 1);
+    return rows.sort((a, b) => pos(a.key) - pos(b.key)).map((r) => ({
+      ...r, name: isPaymentMethodType(r.key) ? METHOD_NAMES[r.key] : MODULE_NAMES[r.key as ModuleKey] ?? r.key,
+    }));
+  }
+
+  /** Bandeja del panel interno: solicitudes en revisión, las más viejas primero. */
+  async pendingRequests() {
+    const { rows } = await this.pool.query<{ merchant_id: string; key: string; requested_at: Date; requested_by: string;
+                                             business_name: string; rif: string; merchant_status: string; kyc_submitted_at: Date | null }>(
+      `SELECT mc.merchant_id, mc.key, mc.updated_at AS requested_at, mc.updated_by AS requested_by,
+              m.business_name, m.rif, m.status AS merchant_status, m.kyc_submitted_at
+         FROM merchants.capabilities mc JOIN merchants.merchants m ON m.id = mc.merchant_id
+        WHERE mc.platform_status = 'pending_review' ORDER BY mc.updated_at, mc.merchant_id`);
+    return rows.map((r) => ({ ...r, name: isPaymentMethodType(r.key) ? METHOD_NAMES[r.key] : MODULE_NAMES[r.key as ModuleKey] ?? r.key }));
+  }
+
   private async lockRow(c: PoolClient, merchantId: string, key: string): Promise<CapabilityView> {
     const m = await c.query('SELECT 1 FROM merchants.merchants WHERE id = $1 FOR UPDATE', [merchantId]);
     if (m.rowCount === 0) throw new ApiError(404, 'resource_missing', `No existe el comercio ${merchantId}`);

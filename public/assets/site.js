@@ -1585,7 +1585,7 @@
   };
   async function createLinkDialog(after) {
     let active = [];
-    try { active = (await api.get('/capabilities')).data.filter((c) => c.kind === 'method' && c.state === 'active' && CHECKOUT_METHODS.includes(c.key)); }
+    try { active = (await api.get('/capabilities')).data.filter((c) => c.kind === 'method' && c.state === 'active'); }
     catch (_) { /* sin la lista, el link acepta todos los métodos activos */ }
     openDialog({
       title: 'Crear link de pago',
@@ -1648,9 +1648,9 @@
   const MODULE_INFO = {
     payment_links: 'Enlaces fijos para cobrar por WhatsApp o Instagram sin programar.',
     webhooks: 'Avisos firmados a tu servidor cuando cambia un pago. Apagado, los eventos se guardan pero no se envían.',
+    settlement_usdt: 'Recibir parte de tus liquidaciones en USDT. Apagado, el corte espera hasta que cambies la regla de liquidación.',
+    settlement_usd: 'Recibir parte de tus liquidaciones en dólares (Panamá o EE. UU.). Apagado, el corte espera hasta que cambies la regla.',
   };
-  // Métodos que el checkout alojado ya sabe mostrar (los demás se cobran por API)
-  const CHECKOUT_METHODS = ['pago_movil_c2p', 'pago_movil_p2p', 'zelle', 'usdt_trc20', 'card_international', 'cash'];
   const canManage = () => ['owner', 'admin'].includes((state.session.user || {}).role || 'owner');
   function feeText(c) {
     let t = pct(c.fee_bps) + (c.fixed_usd && c.fixed_usd !== '0' ? ' + ' + fmt(c.fixed_usd, 'USD') : '') + (c.tax_bps ? ' + IVA' : '');
@@ -1674,7 +1674,7 @@
       methods.replaceChildren(...[
         el('div', { class: 'card-head' }, [el('h2', { id: 'cap-m-h', text: 'Métodos de pago' }), el('span', { class: 'muted', text: activeCount + ' de ' + list('method').length + ' activos' })]),
         activeCount ? null : el('div', { class: 'banner warn', role: 'alert', style: 'margin:16px 20px 0' }, [el('b', { text: 'No tienes métodos activos' }), el('span', { text: 'Mientras no enciendas al menos uno no podrás crear pagos ni links.' })]),
-        el('ul', { class: 'cap-list' }, list('method').map((c) => capRow(c, feeText(c) + (CHECKOUT_METHODS.includes(c.key) ? '' : ' Todavía no aparece en el checkout alojado; se cobra por la API.')))),
+        el('ul', { class: 'cap-list' }, list('method').map((c) => capRow(c, feeText(c)))),
       ].filter(Boolean));
       modules.replaceChildren(
         el('div', { class: 'card-head' }, [el('h2', { id: 'cap-x-h', text: 'Módulos' })]),

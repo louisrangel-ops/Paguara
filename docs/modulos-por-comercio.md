@@ -1,7 +1,8 @@
 # Métodos de pago y módulos por comercio
 
 Cada comercio decide qué métodos de pago ofrece y qué módulos del producto usa, dentro de lo que la plataforma
-le permite. Introducido en la migración `008_capabilities.sql`.
+le permite. Introducido en la migración `008_capabilities.sql`; los módulos de liquidación llegaron en
+`009_settlement_modules_admin.sql`.
 
 ## Dos capas
 
@@ -17,7 +18,7 @@ Capacidades (`key`):
 | Tipo | Llaves |
 |---|---|
 | Método (`method`) | `pago_movil_c2p`, `pago_movil_p2p`, `debito_inmediato`, `card_national`, `card_international`, `zelle`, `banesco_panama`, `usdt_trc20`, `usdt_polygon`, `cash` |
-| Módulo (`module`) | `payment_links`, `webhooks` |
+| Módulo (`module`) | `payment_links`, `webhooks`, `settlement_usdt` (convertir liquidaciones a USDT), `settlement_usd` (convertir liquidaciones a USD) |
 
 ## Estado efectivo
 
@@ -57,6 +58,8 @@ y el outbox de webhooks.
 | Links de pago (crear, activar, abrir `/pay/:slug`) | Módulo `payment_links` activo | 403 `feature_disabled` |
 | Webhooks (crear endpoint, activar, probar, reenviar) | Módulo `webhooks` activo | 403 `feature_disabled` |
 | Outbox de webhooks | Con el módulo apagado el evento se guarda pero no se programan entregas; las pendientes esperan a que se encienda | — |
+| Guardar una regla de liquidación que convierte a USDT o USD | Módulo `settlement_usdt` o `settlement_usd` activo. Liquidar en la misma moneda cobrada o convertir a VES no lo exige | 403 `feature_disabled` |
+| Corte de lote | Si una regla del comercio convierte a una divisa cuyo módulo está apagado, ese comercio se salta con `settlement_module_disabled` y sus pagos siguen en `succeeded` para el próximo corte | — |
 
 El precio que se cobra en `attach` es el del comercio si tiene uno negociado, si no el de `PAYMENT_METHODS`.
 
@@ -65,7 +68,13 @@ El precio que se cobra en `attach` es el del comercio si tiene uno negociado, si
 - **Panel** (`/api/dashboard/capabilities`): solo usuarios con rol `owner` o `admin` (`403 insufficient_role`).
   Página **Métodos de pago** en `#/dashboard/metodos`.
 - **API del comercio** (`sk_`): `GET /v1/account/capabilities`, `POST /v1/account/capabilities/:key {enabled}`.
+- **Panel interno** en `/admin`: bandeja de solicitudes (aprobar o rechazar), interruptores globales con cuántos
+  comercios tienen cada capacidad, y la ficha de un comercio para permitir, bloquear o fijar precio y límites.
+  La página no trae datos: el operador escribe el `INTERNAL_API_TOKEN` (queda en `sessionStorage`, se borra al cerrar
+  la pestaña) y su nombre, que va como `actor` a la auditoría. Rechazar deja la capacidad en `blocked`.
 - **Plataforma** (`X-Internal-Token`):
+  - `GET /internal/capabilities`: catálogo con `merchants_active` y `pending` por capacidad
+  - `GET /internal/capability_requests`: solicitudes en `pending_review`, las más viejas primero
   - `POST /internal/capabilities/:key {global_enabled?, default_for_new?, actor?}`
   - `GET /internal/merchants/:id/capabilities`
   - `POST /internal/merchants/:id/capabilities/:key {platform_status?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?, actor?}`
@@ -76,9 +85,20 @@ Cada cambio de un comercio emite el webhook `account.capability.updated` con la 
 ## Checkout
 
 `GET /v1/checkout/payment_intents/:id` devuelve `payment_methods`: los métodos que el pagador puede elegir en ese
-pago, con los precios del comercio. `public/checkout.html` solo pinta esos. El checkout alojado todavía sabe mostrar
-seis métodos (`pago_movil_c2p`, `pago_movil_p2p`, `zelle`, `usdt_trc20`, `card_international`, `cash`); los otros se
-cobran por la API. En modo demostración, `checkout.html?metodos=zelle,usdt_trc20` simula un comercio con solo esos.
+pago, con los precios del comercio. `public/checkout.html` solo pinta esos, y ya sabe mostrar los diez:
+
+| Método | Qué pide o muestra |
+|---|---|
+| `pago_movil_c2p` | Banco, cédula, teléfono y clave C2P |
+| `debito_inmediato` | Banco, cédula, teléfono y clave de débito inmediato (SMS o token del banco) |
+| `card_national` | Tarjeta (campos del procesador nacional) y cédula del titular |
+| `card_international` | Tarjeta (campos del procesador internacional) |
+| `pago_movil_p2p`, `zelle` | Datos para transferir (`pago_movil_transfer`, `zelle_transfer`) |
+| `banesco_panama` | Cuenta, titular, monto y concepto (`next_action.type = 'bank_transfer'`) |
+| `usdt_trc20`, `usdt_polygon` | Red, dirección, monto y QR (`crypto_transfer`, `network` TRON o POLYGON) |
+| `cash` | Código para pagar en taquilla (`cash_voucher`) |
+
+En modo demostración, `checkout.html?metodos=zelle,usdt_trc20` simula un comercio con solo esos.
 
 ## Ejemplos
 
@@ -100,8 +120,13 @@ curl -X POST .../internal/merchants/acct_123/capabilities/zelle -H "X-Internal-T
   -d '{"fee_bps":100,"fee_fixed_usd":0,"actor":"ventas"}'
 ```
 
+## Decisiones
+
+- **Sin caché en Redis del estado.** Es una consulta por índice en PostgreSQL dentro de la misma transacción que
+  cobra. Una caché obligaría a leer dos versiones en Redis (global y del comercio) para invalidar bien, que cuesta lo
+  mismo que la consulta, y abriría una ventana en que un método recién bloqueado todavía cobra. Se revisa si
+  el checkout llega a ser un cuello de botella medido.
+
 ## Pendiente
 
-- Módulos de liquidación (`settlement_usdt`, liquidación en USD Panamá): hoy las reglas de split no se filtran por capacidad.
-- Caché en Redis del estado: hoy se lee de PostgreSQL en cada `attach`, una consulta por índice.
-- Panel interno para revisar las solicitudes `pending_review` (hoy: `POST /internal/merchants/:id/capabilities/:key`).
+- Notificar al comercio por correo cuando se aprueba o rechaza su solicitud (hoy solo cambia en el panel y llega el webhook).
