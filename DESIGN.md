@@ -36,7 +36,7 @@ Las fuentes que se cargan son **Schibsted Grotesk** (400, 500, 600 y 700) y **Sp
 - **Espaciado:** 4, 6, 8, 12, 16 y 24 px son los valores de `gap` y `padding` más usados en el CSS. El contenido mide como máximo 1160px y el margen lateral mínimo es de 16px.
 - **Radios:** `--radius` 12px (botón grande, aviso de tasa), 10px para botones y campos, 16px para tarjetas, 20px para recibos y la tarjeta de acceso, 14px para el boleto y 50% para los círculos.
 - **Sombra:** `--shadow: 0 1px 2px rgba(23, 34, 29, 0.05), 0 8px 24px rgba(23, 34, 29, 0.06)`, solo en recibos, la tarjeta de acceso y el aviso flotante. En el tema oscuro baja a `0 1px 2px rgba(0, 0, 0, 0.3)`.
-- **Objetivos táctiles:** botones con `min-height: 44px` (52px el grande) y campos con 46px.
+- **Alturas mínimas:** el botón normal mide 44px, el grande 52px y el pequeño (`.btn.sm`) y el de copiar 40px. El selector segmentado (`.seg button`) y el botón de mostrar contraseña miden 38px. Los campos miden 46px en el sitio y 48px en el checkout, y el botón de pagar del checkout 52px.
 
 ## Voz y tono
 
@@ -86,6 +86,8 @@ Rutas relativas a `pasarela/` (son idénticas en el repo Paguara).
 | `--radius` 12px y `--shadow` | `public/assets/site.css:34`, `:35` |
 | Medidas del hero | `public/assets/site.css:198` |
 | Botones (radio de 10px, 44px de alto) | `public/assets/site.css:88-90` |
+| Alturas: `.btn.sm` y `.copy` 40px, `.seg button` 38px, contraseña 38px, campos 46px | `public/assets/site.css:106`, `:110`, `:407`, `:332`, `:124` |
+| Checkout: campos 48px, botón de pagar 52px | `public/checkout.html:134`, `:142` |
 | Foco de 3px en `--accent` | `public/assets/site.css:78` |
 | Tarjeta 16px, recibo y acceso 20px con sombra | `public/assets/site.css:380`, `:206`, `:326` |
 | Titulares 1 a 5 | `public/assets/site.js:555`, `:594`, `:615`, `:658`, `:672` |
