@@ -158,21 +158,30 @@ checkout (30 por minuto por IP).
 
 Servidor del comercio, `Authorization: Bearer sk_test_...` (o `sk_live_...` en producción):
 ```
-POST /v1/payment_intents                {amount, currency, customer?, metadata?, expires_in?}  → incluye client_secret
+POST /v1/payment_intents                {amount, currency, customer?, metadata?, expires_in?, payment_method_types?}  → incluye client_secret
 POST /v1/payment_intents/:id/attach     {payment_method_type, fx_source?}
 POST /v1/payment_intents/:id/confirm    {payment_method_details}   ← OTP/tokens se usan y se descartan
 POST /v1/payment_intents/:id/cancel     {cancellation_reason?}
 GET  /v1/payment_intents/:id
+GET  /v1/account/capabilities                                   ← métodos y módulos de la cuenta y su estado
+POST /v1/account/capabilities/:key      {enabled}
 ```
 Checkout en el navegador, `Authorization: Bearer pk_test_...` + `client_secret` del intent (no ve metadata ni puede cancelar):
 ```
-GET  /v1/checkout/payment_intents/:id?client_secret=...
+GET  /v1/checkout/payment_intents/:id?client_secret=...      ← incluye payment_methods: solo los que el pagador puede elegir
 POST /v1/checkout/payment_intents/:id/attach    {client_secret, payment_method_type}
 POST /v1/checkout/payment_intents/:id/confirm   {client_secret, payment_method_details}
 ```
-Internos y panel (`X-Internal-Token`): comercios y KYC (`/internal/merchants`, `/:id/status`, `/:id/api_keys`, `/:id/settlement_rules`), tasas (`/internal/fx/rates`), resultado de rieles (`/internal/payment_intents/:id/rail_result`), conciliación (`/internal/rail_batches`), corte de lote (`/internal/settlement_batches`) y vencimientos (`/internal/payment_intents/expire`).
+Internos y panel (`X-Internal-Token`): comercios y KYC (`/internal/merchants`, `/:id/status`, `/:id/api_keys`, `/:id/settlement_rules`), interruptores (`/internal/capabilities/:key` global, `/internal/merchants/:id/capabilities[/:key]` por comercio), tasas (`/internal/fx/rates`), resultado de rieles (`/internal/payment_intents/:id/rail_result`), conciliación (`/internal/rail_batches`), corte de lote (`/internal/settlement_batches`) y vencimientos (`/internal/payment_intents/expire`).
 
 Montos en la API como string de enteros en unidades mínimas, para no perder precisión en JavaScript. Sandbox y producción son despliegues separados (`LIVEMODE`), cada uno con su base: una llave de un ambiente es rechazada en el otro y un pago de prueba nunca toca el ledger real.
+
+## Métodos y módulos por comercio
+
+Cada comercio enciende o apaga sus métodos de pago y módulos (links de pago, webhooks) dentro de lo que la
+plataforma le permite. La regla vive en SQL (`merchants.capability_state`, migración 008) y la usan la API, el
+checkout, el panel y el outbox de webhooks. Diseño, estados, errores y endpoints en
+[docs/modulos-por-comercio.md](docs/modulos-por-comercio.md).
 
 ## Comparación con la guía de arquitectura
 

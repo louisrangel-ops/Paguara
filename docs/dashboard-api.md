@@ -19,7 +19,7 @@ Errores: `{ "error": { "code": "...", "message": "texto en español para mostrar
 | POST | /account/kyc | `{legal_name, representative_name, representative_id, address, phone, bank_name, bank_account}` | `Merchant` |
 
 ```
-Session  = { user: {id, name, email}, merchant: Merchant, livemode: bool, other_mode_url: string|null,
+Session  = { user: {id, name, email, role: 'owner'|'admin'|'developer'|'viewer'}, merchant: Merchant, livemode: bool, other_mode_url: string|null,
              event_types: string[] }
 Merchant = { id, business_name, rif, status: 'pending_kyc'|'active'|'restricted'|'closed',
              kyc_submitted_at: string|null, created }
@@ -65,14 +65,31 @@ Payout = { id, batch_code, source_currency, source_amount, created,
 Rule = { target_currency, bps, destination: {type:'bank_ves'|'usdt_trc20'|'bank_usd', ...campos} }
 ```
 
+## Métodos de pago y módulos
+Interruptores por comercio (ver [modulos-por-comercio.md](modulos-por-comercio.md)).
+- GET /capabilities → `{data: Capability[]}` (métodos en el orden del catálogo, luego módulos)
+- PUT /capabilities/:key `{enabled: bool}` → `Capability`; 409 `capability_locked` si la plataforma no lo permite;
+  403 `insufficient_role` si el usuario no es `owner` ni `admin`
+- POST /capabilities/:key/request → `Capability` en `pending_review`; 409 `capability_not_requestable`
+```
+Capability = { object:'capability', key, kind:'method'|'module', name,
+               state: 'active'|'disabled'|'not_granted'|'pending_review'|'blocked'|'unavailable',
+               can_toggle, can_request,
+               // solo métodos:
+               currency, fee_bps, fixed_usd, tax_bps, igtf_bps, custom_pricing, min_amount|null, max_amount|null }
+```
+
 ## Links de pago
 - GET /payment_links → `{data: Link[]}`
-- POST /payment_links `{amount, currency, description}` → `Link`
-- POST /payment_links/:id/deactivate · /activate → `Link`
+- POST /payment_links `{amount, currency, description, payment_method_types?}` → `Link`;
+  403 `feature_disabled` si el módulo `payment_links` está apagado; 400 `payment_method_not_allowed`
+- POST /payment_links/:id/deactivate · /activate → `Link` (activar también exige el módulo encendido)
 ```
-Link = { id, url, amount, currency, description, active, created, payments_count, succeeded_count }
+Link = { id, url, amount, currency, description, active, payment_method_types: string[]|null, created,
+         payments_count, succeeded_count }
 ```
-Abrir `url` (`/pay/<slug>`) crea un pago nuevo y redirige al checkout.
+Abrir `url` (`/pay/<slug>`) crea un pago nuevo y redirige al checkout. Si el link tiene lista de métodos, el pago
+acepta los de la lista que sigan activos; si ninguno lo está, responde 409 `no_payment_methods_available`.
 
 ## Desarrolladores
 - GET /api_keys → `{data: [{id, kind:'secret'|'publishable', livemode, prefix, key|null, active, last_used_at, created, revoked_at}]}`

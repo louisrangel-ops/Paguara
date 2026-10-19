@@ -15,7 +15,8 @@ export const COOKIE = 'sid';
 const RIF = /^[JGVEP]-?\d{8}-?\d$/i;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-export interface SessionUser { userId: string; merchantId: string; email: string; name: string }
+export type DashboardRole = 'owner' | 'admin' | 'developer' | 'viewer';
+export interface SessionUser { userId: string; merchantId: string; email: string; name: string; role: DashboardRole }
 export interface DashboardRequest extends Request { session: SessionUser }
 
 export async function hashPassword(pw: string): Promise<string> {
@@ -126,11 +127,11 @@ export class AuthService {
   }
 
   async resolve(token: string): Promise<SessionUser | null> {
-    const { rows } = await this.pool.query<{ id: string; merchant_id: string; email: string; name: string }>(
-      `SELECT u.id, u.merchant_id, u.email, u.name FROM dashboard.sessions s JOIN dashboard.users u ON u.id = s.user_id
+    const { rows } = await this.pool.query<{ id: string; merchant_id: string; email: string; name: string; role: DashboardRole }>(
+      `SELECT u.id, u.merchant_id, u.email, u.name, u.role FROM dashboard.sessions s JOIN dashboard.users u ON u.id = s.user_id
         WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()`, [sha256(token)]);
     const u = rows[0];
-    return u ? { userId: u.id, merchantId: u.merchant_id, email: u.email, name: u.name } : null;
+    return u ? { userId: u.id, merchantId: u.merchant_id, email: u.email, name: u.name, role: u.role } : null;
   }
 }
 
@@ -138,6 +139,13 @@ export class AuthService {
 export function assertSameOriginWrite(req: Request) {
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.header('x-requested-with') !== 'fetch') {
     throw new ApiError(403, 'csrf_rejected', 'Pedido rechazado: falta la cabecera X-Requested-With');
+  }
+}
+
+/** Lo que cambia cómo cobra la cuenta (métodos, módulos) solo lo hacen el dueño y los administradores. */
+export function assertCanManageAccount(s: SessionUser) {
+  if (s.role !== 'owner' && s.role !== 'admin') {
+    throw new ApiError(403, 'insufficient_role', 'Solo el dueño o un administrador de la cuenta puede cambiar esto');
   }
 }
 

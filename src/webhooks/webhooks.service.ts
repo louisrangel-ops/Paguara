@@ -7,6 +7,7 @@ import { isIP } from 'node:net';
 import { Pool, PoolClient } from 'pg';
 import { ApiError, notFound } from '../common/errors';
 import { PG_POOL } from '../database/database';
+import { assertModuleActive } from '../capabilities/capability-state';
 
 export const EVENT_TYPES = [
   'payment_intent.created',
@@ -16,6 +17,7 @@ export const EVENT_TYPES = [
   'payment_intent.canceled',
   'payment_intent.settled',
   'payout.created',
+  'account.capability.updated',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -26,7 +28,8 @@ const LEASE_SECONDS = 60;
 /**
  * Outbox: se llama dentro de la transacción que produjo el cambio. El evento y
  * sus entregas (una por endpoint suscrito) se confirman o se descartan junto
- * con el pago.
+ * con el pago. Con el módulo de webhooks apagado el evento igual queda
+ * registrado (se ve en el panel), pero no se programa ninguna entrega.
  */
 export async function enqueueEvent(
   client: PoolClient,
@@ -43,7 +46,8 @@ export async function enqueueEvent(
   await client.query(
     `INSERT INTO webhooks.deliveries (event_id, endpoint_id)
      SELECT $1, id FROM webhooks.endpoints
-      WHERE merchant_id = $2 AND status = 'enabled' AND ($3 = ANY(enabled_events) OR '*' = ANY(enabled_events))`,
+      WHERE merchant_id = $2 AND status = 'enabled' AND ($3 = ANY(enabled_events) OR '*' = ANY(enabled_events))
+        AND merchants.capability_state($2, 'webhooks') = 'active'`,
     [id, e.merchantId, e.type],
   );
   return id;
@@ -145,13 +149,18 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
     try { await this.deliverDue(); } catch (e) { this.log.error(`Entrega de webhooks: ${(e as Error).message}`); } finally { this.running = false; }
   }
 
-  /** Toma entregas vencidas con lease (SKIP LOCKED: varios workers no repiten la misma) y las envía. */
+  /**
+   * Toma entregas vencidas con lease (SKIP LOCKED: varios workers no repiten la misma) y las envía.
+   * Si el comercio apagó el módulo de webhooks, sus entregas pendientes esperan a que lo encienda.
+   */
   async deliverDue(limit = 20): Promise<number> {
     const { rows } = await this.pool.query<{ id: string; attempts: number; url: string; secret: string; payload: unknown; event_id: string }>(
       `UPDATE webhooks.deliveries d SET next_attempt_at = now() + make_interval(secs => $2)
          FROM webhooks.endpoints e, webhooks.events ev
-        WHERE d.id IN (SELECT id FROM webhooks.deliveries WHERE status = 'pending' AND next_attempt_at <= now()
-                        ORDER BY next_attempt_at LIMIT $1 FOR UPDATE SKIP LOCKED)
+        WHERE d.id IN (SELECT pd.id FROM webhooks.deliveries pd JOIN webhooks.endpoints pe ON pe.id = pd.endpoint_id
+                        WHERE pd.status = 'pending' AND pd.next_attempt_at <= now()
+                          AND merchants.capability_state(pe.merchant_id, 'webhooks') = 'active'
+                        ORDER BY pd.next_attempt_at LIMIT $1 FOR UPDATE OF pd SKIP LOCKED)
           AND e.id = d.endpoint_id AND ev.id = d.event_id
        RETURNING d.id, d.attempts, e.url, e.secret, ev.payload, ev.id AS event_id`,
       [limit, LEASE_SECONDS],
@@ -182,6 +191,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
     if (clean.length === 0 || clean.some((t) => t !== '*' && !(EVENT_TYPES as readonly string[]).includes(t))) {
       throw new ApiError(400, 'events_invalid', 'Elige al menos un tipo de evento válido');
     }
+    await assertModuleActive(this.pool, merchantId, 'webhooks');
     const id = `we_${randomBytes(10).toString('hex')}`;
     const secret = `whsec_${randomBytes(24).toString('hex')}`;
     await this.pool.query(
@@ -214,6 +224,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
   }
 
   async setStatus(merchantId: string, id: string, status: 'enabled' | 'disabled') {
+    if (status === 'enabled') await assertModuleActive(this.pool, merchantId, 'webhooks');
     const res = await this.pool.query('UPDATE webhooks.endpoints SET status = $3 WHERE id = $1 AND merchant_id = $2', [id, merchantId, status]);
     if (res.rowCount === 0) throw notFound('el webhook', id);
     return this.getEndpoint(merchantId, id);
@@ -222,6 +233,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
   /** Evento de prueba solo hacia ese endpoint (no se reparte a los demás). */
   async sendTest(merchantId: string, id: string, livemode: boolean) {
     await this.getEndpoint(merchantId, id);
+    await assertModuleActive(this.pool, merchantId, 'webhooks');
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -271,6 +283,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
 
   /** Reenvía a todos los endpoints de ese evento (también a los que ya respondieron 2xx). */
   async resend(merchantId: string, id: string) {
+    await assertModuleActive(this.pool, merchantId, 'webhooks');
     const res = await this.pool.query(
       `UPDATE webhooks.deliveries d SET status = 'pending', next_attempt_at = now(), attempts = 0
          FROM webhooks.events ev WHERE ev.id = d.event_id AND ev.id = $1 AND ev.merchant_id = $2`, [id, merchantId]);

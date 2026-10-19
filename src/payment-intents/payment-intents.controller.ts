@@ -7,6 +7,8 @@ import { isCurrency } from '../common/money';
 import { toApi, toCheckoutApi } from './payment-intent.repository';
 import { PaymentIntentsService } from './payment-intents.service';
 import { isPaymentMethodType, PaymentMethodType } from './payment-methods';
+import { methodView, parseMethodList } from '../capabilities/capability-state';
+import { CapabilitiesService } from '../capabilities/capabilities.service';
 
 function parseAmount(v: unknown): bigint {
   if ((typeof v === 'number' && Number.isSafeInteger(v)) || (typeof v === 'string' && /^\d+$/.test(v))) return BigInt(v);
@@ -29,12 +31,14 @@ export class PaymentIntentsController {
   async create(
     @Req() req: MerchantRequest,
     @Headers('idempotency-key') idempotencyKey: string,
-    @Body() body: { amount: unknown; currency: string; metadata?: Record<string, unknown>; customer?: Record<string, unknown>; expires_in?: number },
+    @Body() body: { amount: unknown; currency: string; metadata?: Record<string, unknown>; customer?: Record<string, unknown>; expires_in?: number;
+                    payment_method_types?: unknown },
   ) {
     if (!isCurrency(body.currency)) throw new ApiError(400, 'currency_invalid', `Moneda no soportada: ${body.currency}`);
     return toApi(await this.service.create(req.merchantId, {
       amount: parseAmount(body.amount), currency: body.currency, metadata: body.metadata, customer: body.customer,
       expiresInSeconds: body.expires_in, idempotencyKey, livemode: req.livemode,
+      paymentMethodTypes: parseMethodList(body.payment_method_types),
     }));
   }
 
@@ -76,7 +80,12 @@ export class CheckoutController {
   @Get(':id')
   async retrieve(@Req() req: MerchantRequest, @Param('id') id: string, @Query('client_secret') secret = '') {
     const pi = await this.service.authorizeCheckout(req.merchantId, id, secret);
-    return { ...toCheckoutApi(pi), merchant: await this.merchants.publicProfile(pi.merchant_id) };
+    return {
+      ...toCheckoutApi(pi),
+      merchant: await this.merchants.publicProfile(pi.merchant_id),
+      // Solo lo que este comercio tiene encendido (y, si el pago trae lista, dentro de ella), con sus precios
+      payment_methods: (await this.service.availableMethods(pi)).map(methodView),
+    };
   }
 
   @Post(':id/attach')
@@ -92,5 +101,23 @@ export class CheckoutController {
     @Body() body: { client_secret?: string; payment_method_details?: Record<string, unknown> }) {
     await this.service.authorizeCheckout(req.merchantId, id, body.client_secret ?? '');
     return toCheckoutApi(await this.service.confirm(req.merchantId, id, body.payment_method_details ?? {}));
+  }
+}
+
+/** Interruptores de la cuenta desde el servidor del comercio (llave secreta). */
+@Controller('v1/account/capabilities')
+@UseGuards(SecretKeyGuard)
+export class AccountCapabilitiesController {
+  constructor(private readonly capabilities: CapabilitiesService) {}
+
+  @Get()
+  async list(@Req() req: MerchantRequest) {
+    return { object: 'list', data: await this.capabilities.list(req.merchantId) };
+  }
+
+  @Post(':key')
+  @HttpCode(200)
+  set(@Req() req: MerchantRequest, @Param('key') key: string, @Body() body: { enabled?: unknown }) {
+    return this.capabilities.setMerchantEnabled(req.merchantId, key, body.enabled, 'api_key');
   }
 }

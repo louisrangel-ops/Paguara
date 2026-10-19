@@ -9,8 +9,9 @@ import { FxService } from '../fx/fx.service';
 import { paymentCaptureEntry } from '../ledger/entry-templates';
 import { LedgerService } from '../ledger/ledger.service';
 import { PaymentIntentRepository, PaymentIntentRow } from './payment-intent.repository';
-import { PAYMENT_METHODS, PaymentMethodType, defaultRateSource } from './payment-methods';
+import { METHOD_NAMES, PaymentMethodType, defaultRateSource } from './payment-methods';
 import { computeBreakdown } from './pricing';
+import { MethodSettings, STATE_TEXT, allowedFor, methodSettings } from '../capabilities/capability-state';
 import { RAIL_ADAPTERS, RailAdapter, RailResult } from './rails/rail-adapter';
 
 export interface CreatePaymentIntentInput {
@@ -24,6 +25,8 @@ export interface CreatePaymentIntentInput {
   expiresInSeconds?: number;
   /** Pago creado al abrir un link de pago. */
   paymentLinkId?: string;
+  /** Solo estos métodos (cada uno debe estar activo en el comercio). Sin lista: todos los activos. */
+  paymentMethodTypes?: PaymentMethodType[] | null;
 }
 
 @Injectable()
@@ -46,12 +49,23 @@ export class PaymentIntentsService {
       throw new ApiError(400, 'expires_invalid', 'El vencimiento debe estar entre 1 minuto y 30 días');
     }
     const id = `pi_${randomBytes(12).toString('hex')}`;
+    const only = input.paymentMethodTypes ?? null;
     return withTransaction(this.pool, async (c) => {
+      const methods = await methodSettings(c, merchantId);
+      if (only) {
+        const off = methods.find((m) => only.includes(m.type) && m.state !== 'active');
+        if (off) {
+          throw new ApiError(400, 'payment_method_not_allowed', `${METHOD_NAMES[off.type]} no está activo en tu cuenta (${STATE_TEXT[off.state]})`,
+            'invalid_request_error', { param: 'payment_method_types', payment_method_type: off.type, state: off.state });
+        }
+      } else if (allowedFor(methods, null).length === 0) {
+        throw new ApiError(400, 'no_payment_methods_available', 'Tu cuenta no tiene ningún método de pago activo', 'invalid_request_error');
+      }
       const { pi, created } = await this.repo.insert(c, {
         id, merchantId, amount: input.amount, currency: input.currency, metadata: input.metadata ?? {},
         livemode: input.livemode ?? false, idempotencyKey: input.idempotencyKey ?? null,
         clientSecret: `${id}_secret_${randomBytes(16).toString('hex')}`, customer: input.customer ?? null, ttlSeconds: ttl,
-        paymentLinkId: input.paymentLinkId ?? null,
+        paymentLinkId: input.paymentLinkId ?? null, paymentMethodTypes: only,
       }, input.paymentLinkId ? `payment_link:${input.paymentLinkId}` : `merchant:${merchantId}`);
       if (!created && (pi.amount !== input.amount || pi.currency !== input.currency)) {
         throw new ApiError(422, 'idempotency_key_reused', 'Esta Idempotency-Key ya creó un pago con otro monto o moneda', 'idempotency_error');
@@ -110,10 +124,11 @@ export class PaymentIntentsService {
    * cambiar de método o renovar una cotización vencida mientras no se confirme.
    */
   attachPaymentMethod(merchantId: string, id: string, type: PaymentMethodType, fxSource?: string): Promise<PaymentIntentRow> {
-    const cfg = PAYMENT_METHODS[type];
     return withTransaction(this.pool, async (c) => {
       const pi = await this.repo.lock(c, id, merchantId);
       await this.assertNotExpired(c, pi);
+      const settings = await this.assertMethodUsable(c, pi, type);
+      const cfg = settings.cfg;
       const chargeCurrency = cfg.chargeCurrency;
 
       let quote: FrozenQuote | null = null;
@@ -122,6 +137,11 @@ export class PaymentIntentsService {
         quote = await this.fx.freezeQuote(c, pi.currency, chargeCurrency,
           fxSource ?? defaultRateSource(pi.currency, chargeCurrency), cfg.quoteTtlSeconds);
         chargeAmount = convertWithQuote(pi.amount, pi.currency, chargeCurrency, quote);
+      }
+
+      if ((settings.minAmount !== null && chargeAmount < settings.minAmount) || (settings.maxAmount !== null && chargeAmount > settings.maxAmount)) {
+        throw new ApiError(400, 'amount_out_of_range', `El monto no está dentro de los límites de ${METHOD_NAMES[type]} para este comercio`,
+          'invalid_request_error', { min_amount: settings.minAmount?.toString() ?? null, max_amount: settings.maxAmount?.toString() ?? null, currency: chargeCurrency });
       }
 
       const { amount: fixedFee, quoteId: feeQuoteId } = await this.fixedFeeIn(c, cfg.feeFixedUsd, chargeCurrency, quote, cfg.quoteTtlSeconds);
@@ -155,6 +175,8 @@ export class PaymentIntentsService {
     const pi = await withTransaction(this.pool, async (c) => {
       const current = await this.repo.lock(c, id, merchantId);
       await this.assertNotExpired(c, current);
+      // El comercio pudo apagar el método entre attach y confirm; lo que ya está en curso no se toca
+      if (current.status === 'requires_confirmation') await this.assertMethodUsable(c, current, current.payment_method_type!);
       if (current.status === 'requires_confirmation' && current.fx_quote_id) {
         const { rows } = await c.query<{ expired: boolean }>('SELECT $1::timestamptz <= now() AS expired', [current.fx_quote_expires_at]);
         if (rows[0].expired) {
@@ -253,6 +275,24 @@ export class PaymentIntentsService {
       return this.repo.transition(c, pi, 'cancel', { cancellation_reason: reason, canceled_at: new Date(), next_action: null },
         { actor: `merchant:${merchantId}` });
     });
+  }
+
+  /** Métodos que el pagador puede elegir en este pago, con los precios del comercio. */
+  async availableMethods(pi: PaymentIntentRow): Promise<MethodSettings[]> {
+    return allowedFor(await methodSettings(this.pool, pi.merchant_id), pi.payment_method_types);
+  }
+
+  private async assertMethodUsable(c: PoolClient, pi: PaymentIntentRow, type: PaymentMethodType): Promise<MethodSettings> {
+    if (pi.payment_method_types && !pi.payment_method_types.includes(type)) {
+      throw new ApiError(400, 'payment_method_not_allowed', `Este pago no acepta ${METHOD_NAMES[type]}`,
+        'invalid_request_error', { param: 'payment_method_type', allowed: pi.payment_method_types });
+    }
+    const m = (await methodSettings(c, pi.merchant_id)).find((x) => x.type === type)!;
+    if (m.state !== 'active') {
+      throw new ApiError(403, 'payment_method_disabled', `${METHOD_NAMES[type]} no está disponible para este comercio (${STATE_TEXT[m.state]})`,
+        'invalid_request_error', { param: 'payment_method_type', state: m.state });
+    }
+    return m;
   }
 
   /** Comisión fija definida en USD llevada a la moneda del cobro. */
