@@ -85,6 +85,7 @@ Rutas relativas a `pasarela/` (son idénticas en el repo Paguara).
 | Boleto como único elemento llamativo | `public/assets/site.css:1-3`; uso en `:221` y `:475` |
 | `--radius` 12px y `--shadow` | `public/assets/site.css:34`, `:35` |
 | Medidas del hero | `public/assets/site.css:198` |
-| Botones (radio de 10px, 44px de alto) | `public/assets/site.css:83-86` |
+| Botones (radio de 10px, 44px de alto) | `public/assets/site.css:88-90` |
+| Foco de 3px en `--accent` | `public/assets/site.css:78` |
 | Tarjeta 16px, recibo y acceso 20px con sombra | `public/assets/site.css:380`, `:206`, `:326` |
 | Titulares 1 a 5 | `public/assets/site.js:555`, `:594`, `:615`, `:658`, `:672` |
