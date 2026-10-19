@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: pasarela
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]   # solo desde tu máquina, no desde la red
     volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -15,7 +15,7 @@ services:
   redis:
     image: redis:7
     command: redis-server --appendonly yes   # las llaves de idempotencia sobreviven a un reinicio
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]   # Redis sin clave: solo desde tu máquina
     volumes: [redis_data:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

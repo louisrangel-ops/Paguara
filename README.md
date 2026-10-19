@@ -22,7 +22,7 @@ docker compose up -d postgres redis
 set -a; . ./.env.development; set +a
 npm install
 npm run migrate                      # aplica db/migrations/*.sql
-npm test                             # 19 pruebas unitarias
+npm test                             # 23 pruebas unitarias
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:integration   # 31 pruebas contra PostgreSQL real
 npm run build && npm start           # en otras terminales: npm run dev:jobs y npm run seed
 ```
@@ -37,9 +37,19 @@ parte de `.env.example`, con un `INTERNAL_API_TOKEN` propio y `COOKIE_SECURE=tru
 3. Variables: las de `.env.development`, cambiando `INTERNAL_API_TOKEN` por uno aleatorio, `PUBLIC_BASE_URL` por el dominio que asigne Railway,
    `COOKIE_SECURE=true`, `WEBHOOK_ALLOW_PRIVATE=false` y `TRUST_PROXY=1`.
 4. Segundo servicio desde el mismo repo con comando de inicio `node dist/scripts/dev-jobs.js` y `APP_URL` apuntando a la API.
-5. Una vez: `railway run npm run seed` con `APP_URL` igual a la URL pública.
+5. Una vez: `railway run npm run seed` con `APP_URL` igual a la URL pública y `SEED_PASSWORD` con una clave propia (en un entorno público el seed no usa la de ejemplo).
 
-CI (`.github/workflows/ci.yml`) corre typecheck, pruebas unitarias y de integración, y construye la imagen en cada PR.
+CI (`.github/workflows/ci.yml`) corre typecheck, pruebas unitarias y de integración, construye la imagen y busca secretos con gitleaks en cada PR.
+
+### Secretos
+
+- Nunca se versiona un `.env` con valores reales: `.gitignore` solo deja pasar `.env.example` y `.env.development` (ficticios).
+  En Railway los secretos van en *Variables* del servicio, no en archivos.
+- Con `COOKIE_SECURE` distinto de `false` o `LIVEMODE=true` la API no arranca si `INTERNAL_API_TOKEN` es el de ejemplo o tiene menos de 32 caracteres.
+  Generar uno con `openssl rand -hex 32`.
+- Rotación: `INTERNAL_API_TOKEN` se cambia en Variables y se reinician la API y `dev-jobs`; las llaves `sk_` de un comercio se rotan con
+  *Rotar* en el panel (crea una nueva y revoca la anterior); el secreto `whsec_` de un webhook, borrando el endpoint y creándolo de nuevo.
+- En tu máquina, `pre-commit install` activa gitleaks antes de cada commit (`.pre-commit-config.yaml`).
 
 ## Ciclo de vida de un PaymentIntent
 

@@ -1,5 +1,21 @@
 node_modules/
 dist/
-.env
-dump.rdb
+coverage/
 *.log
+
+# Variables de entorno: solo se versionan la plantilla y el sandbox local (sin secretos reales)
+.env
+.env.*
+!.env.example
+!.env.development
+
+# Llaves, certificados y volcados de datos
+*.pem
+*.key
+*.p12
+*.pfx
+*.rdb
+*.aof
+appendonlydir/
+*.sql.gz
+*.dump

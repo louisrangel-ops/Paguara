@@ -1,0 +1,12 @@
+# Escaneo de secretos (CI y pre-commit). Usa las reglas por defecto de gitleaks.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Datos ficticios del modo demo y de la documentación"
+paths = [
+  '''^public/assets/site-demo\.js$''',
+]
+regexes = [
+  '''^pedido-[0-9]+-[a-z]+$''',
+]
