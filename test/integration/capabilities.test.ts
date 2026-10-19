@@ -4,6 +4,7 @@ import { CapabilitiesService } from '../../src/capabilities/capabilities.service
 import { allowedFor, methodSettings } from '../../src/capabilities/capability-state';
 import { DashboardService } from '../../src/dashboard/dashboard.service';
 import { WebhooksService } from '../../src/webhooks/webhooks.service';
+import { withTransaction } from '../../src/database/database';
 import { Ctx, pgError, seedRates, setup } from './helpers';
 
 let ctx: Ctx;
@@ -146,4 +147,66 @@ test('la BD no acepta capacidades inventadas ni límites incoherentes', async ()
   assert.equal(e1.code, '23503');
   const e2 = await pgError(ctx.pool.query(`UPDATE merchants.capabilities SET min_amount = 10, max_amount = 5 WHERE merchant_id = $1 AND key = 'zelle'`, [m]));
   assert.equal(e2.code, '23514');
+});
+
+test('liquidación en divisas: con el módulo apagado no se guarda la regla y el corte espera', async () => {
+  const m = await ctx.merchant('acct_caps_settle');
+  const usdt = { targetCurrency: 'USDT' as const, bps: 4000, destination: { network: 'TRON', address: 'TX' } };
+  const ves = { targetCurrency: 'VES' as const, bps: 6000, destination: { bank: '0102', account: '01020000000000000000' } };
+  await ctx.merchants.setSettlementRules(m, 'VES', [ves, usdt]);
+
+  let pi = await ctx.payments.create(m, { amount: 10000n, currency: 'USD' });
+  pi = await ctx.payments.attachPaymentMethod(m, pi.id, 'pago_movil_c2p');
+  pi = await ctx.payments.confirm(m, pi.id, { phone: '04141234567', bank: '0102', otp: '1' });
+  await ctx.settlements.recordRailFunds('c2p_settle_1', 'ves_c2p', 'VES', [pi.id]);
+
+  await caps.platformSetForMerchant(m, 'settlement_usdt', { platform_status: 'blocked' }, 'platform:cumplimiento');
+  await assert.rejects(ctx.merchants.setSettlementRules(m, 'VES', [ves, usdt]), code('feature_disabled'));
+  // Bolívares y la misma moneda no necesitan módulo
+  await ctx.merchants.setSettlementRules(m, 'USD', [{ targetCurrency: 'VES', bps: 10000, destination: {} }]);
+
+  const r = await ctx.settlements.runCutoff('2026-10-19-VES-caps', { sourceCurrency: 'VES' });
+  assert.deepEqual(r.skipped.filter((s) => s.merchantId === m), [{ merchantId: m, reason: 'settlement_module_disabled' }]);
+  assert.equal((await ctx.payments.retrieve(m, pi.id)).status, 'succeeded'); // sigue esperando, no se pierde
+
+  await caps.platformSetForMerchant(m, 'settlement_usdt', { platform_status: 'allowed' }, 'platform:cumplimiento');
+  await withTransaction(ctx.pool, (c) => ctx.ledger.post(c, {
+    idempotencyKey: 'treasury:usdt:caps', kind: 'capital_contribution', description: 'Aporte de capital en USDT (prueba)',
+    lines: [
+      { accountCode: 'platform:cash:USDT', currency: 'USDT', amount: 1_000_000_000n },
+      { accountCode: 'platform:fx_position:USDT', currency: 'USDT', amount: -1_000_000_000n },
+    ],
+  }));
+  const r2 = await ctx.settlements.runCutoff('2026-10-19-VES-caps-2', { sourceCurrency: 'VES' });
+  assert.deepEqual(r2.skipped.filter((s) => s.merchantId === m), []);
+  assert.ok(r2.payouts.some((p) => p.merchantId === m));
+});
+
+test('panel interno: bandeja de solicitudes y catálogo con conteos', async () => {
+  const m = await ctx.merchant('acct_caps_inbox');
+  await caps.platformSetForMerchant(m, 'banesco_panama', { platform_status: 'blocked' }, 'platform:x');
+  await ctx.pool.query(`DELETE FROM merchants.capabilities WHERE merchant_id = $1 AND key = 'settlement_usd'`, [m]);
+  await caps.request(m, 'settlement_usd', 'user:x');
+  const inbox = await caps.pendingRequests();
+  const mine = inbox.find((r) => r.merchant_id === m)!;
+  assert.equal(mine.key, 'settlement_usd');
+  assert.equal(mine.name, 'Liquidar en dólares');
+  assert.equal(mine.business_name, `Comercio ${m}`);
+
+  const globals = await caps.listGlobal();
+  assert.equal(globals[0].key, 'pago_movil_c2p'); // orden del catálogo
+  const usd = globals.find((g) => g.key === 'settlement_usd')!;
+  assert.ok(usd.pending >= 1);
+  await caps.platformSetForMerchant(m, 'settlement_usd', { platform_status: 'allowed' }, 'platform:x');
+  assert.ok(!(await caps.pendingRequests()).some((r) => r.merchant_id === m));
+});
+
+test('Banesco Panamá en el sandbox: espera la transferencia con los datos de la cuenta', async () => {
+  const m = await ctx.merchant('acct_caps_bpa');
+  let pi = await ctx.payments.create(m, { amount: 5000n, currency: 'USD' });
+  pi = await ctx.payments.attachPaymentMethod(m, pi.id, 'banesco_panama');
+  pi = await ctx.payments.confirm(m, pi.id, {});
+  assert.equal(pi.status, 'requires_action');
+  assert.equal(pi.next_action?.type, 'bank_transfer');
+  assert.equal(pi.next_action?.amount, pi.charge_amount!.toString());
 });

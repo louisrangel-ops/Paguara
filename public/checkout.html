@@ -244,8 +244,12 @@ input::placeholder { color: var(--muted); opacity: 1; }
   const METHODS = [
     { type: 'pago_movil_c2p', name: 'Pago Móvil', sub: 'Con la clave de pago de tu banco', cur: 'VES' },
     { type: 'pago_movil_p2p', name: 'Transferencia Pago Móvil', sub: 'Desde la app de tu banco', cur: 'VES' },
+    { type: 'debito_inmediato', name: 'Débito inmediato', sub: 'Se debita de tu cuenta con la clave de tu banco', cur: 'VES' },
+    { type: 'card_national', name: 'Tarjeta nacional', sub: 'Débito o crédito de un banco venezolano', cur: 'VES' },
     { type: 'zelle', name: 'Zelle', sub: 'Desde tu banco en EE. UU.', cur: 'USD' },
+    { type: 'banesco_panama', name: 'Banesco Panamá', sub: 'Transferencia en dólares', cur: 'USD' },
     { type: 'usdt_trc20', name: 'USDT', sub: 'Red TRON (TRC-20)', cur: 'USDT' },
+    { type: 'usdt_polygon', name: 'USDT en Polygon', sub: 'Red Polygon (PoS)', cur: 'USDT' },
     { type: 'card_international', name: 'Tarjeta internacional', sub: 'Visa, Mastercard o Amex', cur: 'USD' },
     { type: 'cash', name: 'Efectivo en dólares', sub: 'En una taquilla aliada', cur: 'USD' },
   ];
@@ -356,8 +360,12 @@ input::placeholder { color: var(--muted); opacity: 1; }
     const CFG = {
       pago_movil_c2p: { cur: 'VES', bps: 150, fixed: 5n, tax: 1600, igtf: 0, ttl: 300 },
       pago_movil_p2p: { cur: 'VES', bps: 150, fixed: 5n, tax: 1600, igtf: 0, ttl: 900 },
+      debito_inmediato: { cur: 'VES', bps: 150, fixed: 5n, tax: 1600, igtf: 0, ttl: 300 },
+      card_national: { cur: 'VES', bps: 380, fixed: 0n, tax: 1600, igtf: 0, ttl: 300 },
       zelle: { cur: 'USD', bps: 250, fixed: 25n, tax: 0, igtf: 0, ttl: 1800 },
+      banesco_panama: { cur: 'USD', bps: 250, fixed: 25n, tax: 0, igtf: 0, ttl: 900 },
       usdt_trc20: { cur: 'USDT', bps: 120, fixed: 10n, tax: 0, igtf: 0, ttl: 1800 },
+      usdt_polygon: { cur: 'USDT', bps: 120, fixed: 10n, tax: 0, igtf: 0, ttl: 1800 },
       card_international: { cur: 'USD', bps: 490, fixed: 40n, tax: 0, igtf: 0, ttl: 900 },
       cash: { cur: 'USD', bps: 200, fixed: 25n, tax: 0, igtf: 300, ttl: 86400 },
     };
@@ -428,6 +436,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
           pago_movil_p2p: { type: 'pago_movil_transfer', bank: '0102', phone: '04140000000', rif: 'J-00000000-0', amount: amt, currency: cur, reference_hint: pi.id.slice(-6) },
           zelle: { type: 'zelle_transfer', email: 'pagos@example.com', memo: pi.id.slice(-8), amount: amt, currency: cur },
           usdt_trc20: { type: 'crypto_transfer', network: 'TRON', address: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE', amount: amt, currency: cur },
+          usdt_polygon: { type: 'crypto_transfer', network: 'POLYGON', address: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', amount: amt, currency: cur },
+          banesco_panama: { type: 'bank_transfer', bank: 'Banesco (Panamá), S.A.', account: '201800000000', holder: 'Paguara Panamá, S.A.', account_type: 'Corriente', memo: pi.id.slice(-8), amount: amt, currency: cur },
           cash: { type: 'cash_voucher', code: '7731 0425 9018', amount: amt, currency: cur },
         };
         if (actions[pi.payment_method_type]) {
@@ -567,7 +577,36 @@ input::placeholder { color: var(--muted); opacity: 1; }
 
   function methodForm(type) {
     const f = el('form', { id: 'pay-form', novalidate: true, 'aria-label': 'Datos del pago' });
-    if (type === 'pago_movil_c2p') {
+    const docField = () => el('div', { class: 'field' }, [el('label', { for: 'doc', text: 'Cédula del titular' }),
+      el('div', { class: 'pair' }, [
+        el('select', { id: 'doc-type', name: 'doc_type', 'aria-label': 'Tipo de documento' }, [['V', 'V'], ['E', 'E'], ['J', 'J'], ['P', 'P']].map(([v, t]) => el('option', { value: v, text: t }))),
+        input({ id: 'doc', name: 'doc', inputmode: 'numeric', autocomplete: 'off', placeholder: '12345678…', required: true, pattern: '\\d{6,9}' })]),
+      fieldError('doc')]);
+    if (type === 'debito_inmediato') {
+      f.append(
+        el('div', { class: 'field' }, [el('label', { for: 'bank', text: 'Banco de tu cuenta' }),
+          el('select', { id: 'bank', name: 'bank', required: true }, BANKS.map(([c, n]) => el('option', { value: c, text: n + ' (' + c + ')' })))]),
+        docField(),
+        el('div', { class: 'field' }, [el('label', { for: 'phone', text: 'Teléfono registrado en tu banco' }),
+          el('div', { class: 'pair' }, [
+            el('select', { id: 'phone-prefix', name: 'phone_prefix', 'aria-label': 'Operadora' }, PREFIXES.map((p) => el('option', { value: p, text: p }))),
+            input({ id: 'phone', name: 'phone', type: 'tel', inputmode: 'numeric', autocomplete: 'tel-local', placeholder: '1234567…', required: true, pattern: '\\d{7}' })]),
+          fieldError('phone')]),
+        el('div', { class: 'field' }, [el('label', { for: 'otp', text: 'Clave de débito inmediato' }),
+          input({ id: 'otp', name: 'otp', inputmode: 'numeric', autocomplete: 'one-time-code', placeholder: '6 dígitos…', required: true, pattern: '\\d{4,8}', hint: true }),
+          el('span', { class: 'hint', id: 'otp-hint', text: 'Te la envía tu banco por SMS o la generas en su app como “token”. No la guardamos.' }),
+          fieldError('otp')]),
+      );
+    } else if (type === 'card_national') {
+      f.append(el('div', { class: 'secure-card' }, [
+        el('div', { class: 'field' }, [el('label', { for: 'card', text: 'Número de tarjeta' }),
+          input({ id: 'card', name: 'cardnumber', inputmode: 'numeric', placeholder: '5011 0000 0000 0000…', autocomplete: 'cc-number' })]),
+        el('div', { class: 'pair', style: 'grid-template-columns: 1fr 1fr' }, [
+          el('div', { class: 'field' }, [el('label', { for: 'card-exp', text: 'Vencimiento' }), input({ id: 'card-exp', name: 'cc-exp', inputmode: 'numeric', placeholder: 'MM/AA…', autocomplete: 'cc-exp' })]),
+          el('div', { class: 'field' }, [el('label', { for: 'card-cvc', text: 'CVV' }), input({ id: 'card-cvc', name: 'cvc', inputmode: 'numeric', placeholder: '123…', autocomplete: 'cc-csc' })])]),
+        el('span', { class: 'hint', text: 'Estos campos los aloja el procesador nacional. Los datos de la tarjeta no pasan por nuestros servidores.' }),
+      ]), docField());
+    } else if (type === 'pago_movil_c2p') {
       f.append(
         el('div', { class: 'field' }, [el('label', { for: 'bank', text: 'Banco' }),
           el('select', { id: 'bank', name: 'bank', required: true }, BANKS.map(([c, n]) => el('option', { value: c, text: n + ' (' + c + ')' })))]),
@@ -600,12 +639,14 @@ input::placeholder { color: var(--muted); opacity: 1; }
         pago_movil_p2p: 'Al continuar te mostramos los datos para hacer el Pago Móvil desde la app de tu banco. Lo detectamos solos en segundos.',
         zelle: 'Al continuar te mostramos el correo y el concepto que debes usar en Zelle.',
         usdt_trc20: 'Al continuar te mostramos la dirección y el monto exacto. Envía solo USDT por la red TRON.',
+        usdt_polygon: 'Al continuar te mostramos la dirección y el monto exacto. Envía solo USDT por la red Polygon.',
+        banesco_panama: 'Al continuar te mostramos la cuenta en Banesco Panamá y el concepto que debes poner en la transferencia.',
         cash: 'Al continuar te damos un código para pagar en efectivo en una taquilla aliada. El IGTF del 3 % ya está incluido.',
       }[type];
       f.append(el('p', { class: 'banner info', text: copy }));
     }
     const pi = state.pi;
-    const cta = type === 'pago_movil_c2p' || type === 'card_international'
+    const cta = ['pago_movil_c2p', 'debito_inmediato', 'card_national', 'card_international'].includes(type)
       ? 'Pagar ' + fmt(pi.charge.amount, pi.charge.currency)
       : 'Continuar';
     const paying = state.busy === 'pay';
@@ -647,9 +688,18 @@ input::placeholder { color: var(--muted); opacity: 1; }
       rows.push(copyRow('Correo', na.email));
       rows.push(copyRow('Monto exacto', rawAmount(na.amount, na.currency), fmt(na.amount, na.currency)));
       rows.push(copyRow('Concepto (memo)', na.memo));
+    } else if (na.type === 'bank_transfer') {
+      title = 'Transfiere a ' + na.bank;
+      rows.push(plainRow('Banco', na.bank));
+      rows.push(copyRow('Cuenta', na.account));
+      if (na.account_type) rows.push(plainRow('Tipo de cuenta', na.account_type));
+      rows.push(copyRow('Titular', na.holder));
+      rows.push(copyRow('Monto exacto', rawAmount(na.amount, na.currency), fmt(na.amount, na.currency)));
+      rows.push(copyRow('Concepto', na.memo));
     } else if (na.type === 'crypto_transfer') {
-      title = 'Envía USDT por la red ' + na.network;
-      rows.push(plainRow('Red', na.network === 'TRON' ? 'TRON (TRC-20)' : na.network));
+      const net = { TRON: 'TRON (TRC-20)', POLYGON: 'Polygon (PoS)' }[na.network] || na.network;
+      title = 'Envía USDT por la red ' + net.replace(/ \(.*\)$/, '');
+      rows.push(plainRow('Red', net));
       rows.push(copyRow('Dirección', na.address));
       rows.push(copyRow('Monto exacto', rawAmount(na.amount, na.currency), fmt(na.amount, na.currency)));
       qr = el('div', { class: 'qr', id: 'qr', role: 'img', 'aria-label': 'Código QR de la dirección USDT' });
@@ -802,14 +852,23 @@ input::placeholder { color: var(--muted); opacity: 1; }
         otp: $('otp').value.trim(),
       };
     }
+    if (type === 'debito_inmediato') {
+      return {
+        bank: $('bank').value,
+        document: $('doc-type').value + '-' + $('doc').value.trim(),
+        phone: $('phone-prefix').value + $('phone').value.trim(),
+        otp: $('otp').value.trim(),
+      };
+    }
     if (type === 'card_international') return { token: 'tok_visa' }; // en producción: token del iframe del procesador
+    if (type === 'card_national') return { token: 'tok_nacional', document: $('doc-type').value + '-' + $('doc').value.trim() };
     return {};
   }
 
   async function onPay(type, form) {
     const btn = $('pay-btn');
     if (btn && btn.dataset.refresh) return choose(type);
-    if (type === 'pago_movil_c2p') {
+    if (['pago_movil_c2p', 'debito_inmediato', 'card_national'].includes(type)) {
       const bad = [...form.querySelectorAll('input[required]')].find((i) => !new RegExp('^' + i.pattern + '$').test(i.value.trim()));
       if (bad) { setState({ fieldError: { id: bad.id, message: FIELD_ERRORS[bad.id] }, error: null }); return; }
     }

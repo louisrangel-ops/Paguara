@@ -94,6 +94,17 @@ export class InternalController {
     return { ok: true };
   }
 
+  @Get('capabilities')
+  async globalCapabilities() {
+    return { object: 'list', data: await this.capabilities.listGlobal() };
+  }
+
+  /** Solicitudes de los comercios esperando aprobación (bandeja del panel interno). */
+  @Get('capability_requests')
+  async capabilityRequests() {
+    return { object: 'list', data: await this.capabilities.pendingRequests() };
+  }
+
   /** Interruptor global de un método o módulo (riel caído, banco sin convenio) y si se da a comercios nuevos. */
   @Post('capabilities/:key')
   @HttpCode(200)

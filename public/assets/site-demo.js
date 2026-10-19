@@ -78,8 +78,9 @@
   // Interruptores por comercio (misma forma que GET /api/dashboard/capabilities)
   const CAP_STATE = Object.assign(Object.fromEntries(Object.keys(CFG).map((k) => [k, 'active'])), {
     card_national: 'disabled', banesco_panama: 'not_granted', usdt_polygon: 'pending_review', payment_links: 'active', webhooks: 'active',
+    settlement_usdt: 'active', settlement_usd: 'not_granted',
   });
-  const MODULE_NAMES = { payment_links: 'Links de pago', webhooks: 'Webhooks' };
+  const MODULE_NAMES = { payment_links: 'Links de pago', webhooks: 'Webhooks', settlement_usdt: 'Liquidar en USDT', settlement_usd: 'Liquidar en dólares' };
   function capView(key) {
     const st = CAP_STATE[key], c = CFG[key];
     const v = { object: 'capability', key, kind: c ? 'method' : 'module', name: c ? METHOD_NAMES[key] : MODULE_NAMES[key], state: st,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS, IdempotencyInterceptor } from './common/idempotency.interceptor';
 import { CheckoutPageController } from './checkout-page.controller';
+import { AdminPageController } from './admin-page.controller';
 import { createPool, PG_POOL } from './database/database';
 import { MerchantsService } from './merchants/merchants.service';
 import { PublishableKeyGuard, SecretKeyGuard } from './common/api-key.guard';
@@ -30,7 +31,7 @@ function sandboxRails(): Map<string, RailAdapter> {
 }
 
 @Module({
-  controllers: [PaymentIntentsController, CheckoutController, AccountCapabilitiesController, CheckoutPageController, InternalController,
+  controllers: [PaymentIntentsController, CheckoutController, AccountCapabilitiesController, CheckoutPageController, AdminPageController, InternalController,
     DashboardAuthController, DashboardController, PublicController, SitePageController, HealthController],
   providers: [
     { provide: PG_POOL, useFactory: () => createPool() },

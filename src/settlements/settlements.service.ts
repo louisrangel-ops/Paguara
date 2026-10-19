@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { ApiError } from '../common/errors';
 import { Currency } from '../common/money';
+import { moduleState, settlementModuleFor } from '../capabilities/capability-state';
 import { PG_POOL, withTransaction } from '../database/database';
 import { FxService } from '../fx/fx.service';
 import { merchantPayoutEntry, PayoutLeg, PayoutSplit, railFundsReceivedEntry } from '../ledger/entry-templates';
@@ -98,7 +99,8 @@ export class SettlementsService {
       try {
         const p = await withTransaction(this.pool, (c) =>
           this.settleMerchant(c, batchId, g.merchant_id, g.ids, opts.sourceCurrency, opts.spreadBps ?? DEFAULT_PAYOUT_SPREAD_BPS));
-        if (p) result.payouts.push(p);
+        if (typeof p === 'string') result.skipped.push({ merchantId: g.merchant_id, reason: p });
+        else if (p) result.payouts.push(p);
         else result.skipped.push({ merchantId: g.merchant_id, reason: 'no_settlement_rule' });
       } catch (err) {
         this.log.error(`Corte ${batchCode}: no se pudo liquidar a ${g.merchant_id}: ${(err as Error).message}`);
@@ -116,6 +118,11 @@ export class SettlementsService {
         WHERE merchant_id = $1 AND source_currency = $2
         ORDER BY target_currency = $2, target_currency`, [merchantId, source]);
     if (rules.length === 0) return null;
+    // Si la plataforma o el comercio apagó la liquidación en esa divisa, espera al próximo corte (el saldo no se pierde)
+    for (const r of rules) {
+      const mod = settlementModuleFor(source, r.target_currency);
+      if (mod && await moduleState(c, merchantId, mod) !== 'active') return 'settlement_module_disabled' as const;
+    }
 
     // Re-lee con lock: otro corte concurrente pudo haberlos tomado
     const pis = (await this.repo.lockMany(c, ids)).filter((pi) => pi.status === 'succeeded' && pi.funds_received_entry_id !== null);

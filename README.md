@@ -188,8 +188,9 @@ Montos en la API como string de enteros en unidades mínimas, para no perder pre
 
 ## Métodos y módulos por comercio
 
-Cada comercio enciende o apaga sus métodos de pago y módulos (links de pago, webhooks) dentro de lo que la
-plataforma le permite. La regla vive en SQL (`merchants.capability_state`, migración 008) y la usan la API, el
+Cada comercio enciende o apaga sus métodos de pago y módulos (links de pago, webhooks, liquidar en USDT o USD)
+dentro de lo que la plataforma le permite. Operaciones aprueba solicitudes y apaga métodos para todos desde el
+panel interno en `/admin`. La regla vive en SQL (`merchants.capability_state`, migración 008) y la usan la API, el
 checkout, el panel y el outbox de webhooks. Diseño, estados, errores y endpoints en
 [docs/modulos-por-comercio.md](docs/modulos-por-comercio.md).
 
