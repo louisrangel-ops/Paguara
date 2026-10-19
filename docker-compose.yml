@@ -1,3 +1,5 @@
+# Entorno de desarrollo completo: `docker compose up -d --build`, luego `docker compose run --rm seed`.
+# Solo Postgres y Redis (para correr la app con npm): `docker compose up -d postgres redis`.
 services:
   postgres:
     image: postgres:16
@@ -6,11 +8,53 @@ services:
       POSTGRES_DB: pasarela
     ports: ["5432:5432"]
     volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      retries: 10
   redis:
     image: redis:7
     command: redis-server --appendonly yes   # las llaves de idempotencia sobreviven a un reinicio
     ports: ["6379:6379"]
     volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    env_file: .env.development
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/pasarela
+      REDIS_URL: redis://redis:6379
+    ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # Tasas fijas y vencimiento de cobros mientras no exista el job real de tasas
+  dev-jobs:
+    build: .
+    command: ["node", "dist/scripts/dev-jobs.js"]
+    healthcheck: { disable: true }   # el de la imagen es para la API
+    env_file: .env.development
+    environment:
+      APP_URL: http://app:3000
+    depends_on:
+      app: { condition: service_healthy }
+
+  # Usuario del panel y llaves de prueba: `docker compose run --rm seed`
+  seed:
+    build: .
+    command: ["node", "dist/scripts/seed.js"]
+    healthcheck: { disable: true }
+    env_file: .env.development
+    environment:
+      APP_URL: http://app:3000
+    depends_on:
+      app: { condition: service_healthy }
+    profiles: [tools]
 
 volumes:
   postgres_data:
