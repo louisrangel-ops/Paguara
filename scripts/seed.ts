@@ -18,6 +18,10 @@ async function post(path: string, body: unknown, headers: Record<string, string>
 async function main() {
   if (process.env.LIVEMODE === 'true') throw new Error('LIVEMODE=true: el seed es solo para sandbox');
   if (!TOKEN) throw new Error('INTERNAL_API_TOKEN no está definido');
+  // La clave por defecto está en el repo: en un entorno público cualquiera entraría al panel.
+  if (process.env.COOKIE_SECURE !== 'false' && !process.env.SEED_PASSWORD) {
+    throw new Error('Entorno público (COOKIE_SECURE no es false): define SEED_PASSWORD con una clave propia');
+  }
 
   const signup = await post('/api/dashboard/signup',
     { name: 'Desarrollo', email: EMAIL, password: PASSWORD, business_name: 'Tienda de Pruebas', rif: 'J-00000001-0' },

@@ -4,8 +4,14 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/api-exception.filter';
+import { deployedConfigProblems } from './common/secrets-check';
 
 async function bootstrap() {
+  const problems = deployedConfigProblems(process.env);
+  if (problems.length) {
+    console.error(`Configuración insegura, no se arranca:\n  - ${problems.join('\n  - ')}`);
+    process.exit(1);
+  }
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   // Estilos y scripts del sitio y del dashboard (public/assets)
   app.useStaticAssets(join(process.cwd(), 'public', 'assets'), { prefix: '/assets/', maxAge: '1h' });

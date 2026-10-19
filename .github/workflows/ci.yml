@@ -32,3 +32,13 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       - name: Construir la imagen
         run: docker build -t paguara .
+
+  # Falla si algún commit del PR (o de main) trae un secreto. Reglas y excepciones en .gitleaks.toml.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.21.2 git /repo --config /repo/.gitleaks.toml --redact --verbose
