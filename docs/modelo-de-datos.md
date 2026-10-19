@@ -13,11 +13,12 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 |---|---|---|
 | `ledger` | Monedas, cuentas, asientos, partidas, saldos | 001, 004 |
 | `fx` | Tasas observadas y cotizaciones congeladas | 002 |
-| `payments` | PaymentIntents, transiciones, links de pago | 003, 005, 007 |
-| `merchants` | Comercios, llaves API, reglas de liquidación | 005, 007 |
+| `payments` | PaymentIntents, transiciones, links de pago | 003, 005, 007, 008 |
+| `merchants` | Comercios, llaves API, reglas de liquidación, capacidades por comercio | 005, 007, 008 |
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
 | `dashboard` | Usuarios del panel y sesiones | 007 |
 | `webhooks` | Endpoints, eventos (outbox) y entregas | 007 |
+| `platform` | Catálogo de métodos y módulos con su interruptor global | 008, 009 |
 
 ## Migraciones
 
@@ -70,6 +71,20 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 - `webhooks.endpoints` (`we_…`, `secret` `whsec_…`, `enabled_events text[]`, `status`), `webhooks.events` (`evt_…`, append-only) y `webhooks.deliveries` (una por evento y endpoint, con intentos y próximo intento).
 - `payments.payment_links`: `plink_…`, `slug` 12–40 alfanumérico, monto, moneda, descripción, `livemode`, `active`; `payment_intents.payment_link_id`.
 - Índice `(merchant_id, created_at DESC, id DESC)` para los listados del dashboard.
+
+### 008 · `008_capabilities.sql` — Interruptores por comercio (PR #4)
+- Esquema `platform`. `platform.capabilities (key, kind 'method'|'module', global_enabled, default_for_new, updated_at)` con los diez métodos y los módulos `payment_links` y `webhooks`.
+- `merchants.capabilities (merchant_id, key, platform_status 'allowed'|'pending_review'|'blocked', merchant_enabled, fee_bps, fee_fixed_usd, min_amount, max_amount, updated_by, updated_at)`; `CHECK` de rangos y `min_amount ≤ max_amount`.
+- `merchants.capability_changes`: auditoría append-only (`merchant_id NULL` = cambio global).
+- Función `merchants.capability_state(merchant, key)` → `unavailable`, `not_granted`, `blocked`, `pending_review`, `disabled` o `active`. Es la única regla.
+- Trigger en `merchants.merchants`: cada comercio nuevo recibe las capacidades `default_for_new`. A los comercios existentes se les dieron todas.
+- `payment_intents.payment_method_types` y `payment_links.payment_method_types` (`text[]`, `NULL` = todos los activos).
+
+### 009 · `009_settlement_modules_admin.sql` — Módulos de liquidación en divisas (PR #6)
+- Módulos `settlement_usdt` y `settlement_usd`, otorgados a todos los comercios existentes.
+- Índice `capabilities_pending_idx` para la bandeja de solicitudes del panel interno.
+
+Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md).
 
 ## Prefijos de identificadores
 

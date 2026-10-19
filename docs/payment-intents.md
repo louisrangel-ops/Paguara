@@ -38,15 +38,20 @@ No hay estados `failed`, `refunded` ni `disputed`: un rechazo vuelve a `requires
 ## Pasos
 
 **Crear** (`create`): valida monto > 0, moneda soportada y `expires_in` entre 60 s y 30 días (24 h por defecto).
+Acepta `payment_method_types` (lista de métodos permitidos en ese pago): cada uno debe estar `active` en el comercio
+(400 `payment_method_not_allowed`); sin lista, el comercio debe tener al menos un método activo (400 `no_payment_methods_available`).
 Genera `pi_…` y `client_secret`. Si `(comercio, Idempotency-Key)` ya existe devuelve el existente; si el monto
 o la moneda difieren → 422 `idempotency_key_reused`. Registra la transición `create` y el evento `payment_intent.created`.
 
 **Adjuntar método** (`attachPaymentMethod`): toma lock, rechaza si venció (409 `payment_intent_expired`).
-Fija riel y moneda de cobro del método. Si la moneda del precio difiere, congela una cotización con el TTL del
+El método debe estar en la lista del pago, si la tiene (400 `payment_method_not_allowed`), y `active` en el comercio
+(403 `payment_method_disabled`); el monto en moneda de cobro debe respetar sus `min_amount`/`max_amount` (400 `amount_out_of_range`).
+Usa el precio negociado del comercio si existe ([modulos-por-comercio.md](modulos-por-comercio.md)). Fija riel y moneda de cobro del método. Si la moneda del precio difiere, congela una cotización con el TTL del
 método ([fx.md](fx.md)) y convierte. Lleva la comisión fija (definida en USD) a la moneda del cobro y calcula el
 desglose ([metodos-de-pago.md](metodos-de-pago.md)). Puede repetirse mientras no se confirme.
 
-**Confirmar** (`confirm`): en una transacción corta valida vencimiento y que la cotización no haya vencido
+**Confirmar** (`confirm`): en una transacción corta valida vencimiento, desde `requires_confirmation` repite el chequeo
+del método (el comercio pudo apagarlo después de `attach`; lo que ya está en `processing` o `requires_action` no se toca) y que la cotización no haya vencido
 (409 `fx_quote_expired`: hay que volver a adjuntar) y persiste `processing`. **Luego**, fuera de la transacción,
 llama al riel con `attemptKey = <pi_id>_<version>`. Los `payment_method_details` (OTP, tokens) se pasan al riel
 y no se guardan. Si el riel no responde (excepción, timeout), el intent queda en `processing` para el reconciliador
