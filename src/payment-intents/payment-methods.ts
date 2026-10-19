@@ -30,7 +30,7 @@ export interface MethodConfig {
   quoteTtlSeconds: number;
 }
 
-/** Precios del documento de diseño (sección 4). Se moverán a configuración por comercio. */
+/** Precios de plataforma (documento de diseño, sección 4). Cada comercio puede tener los suyos en merchants.capabilities. */
 export const PAYMENT_METHODS: Record<PaymentMethodType, MethodConfig> = {
   pago_movil_c2p:     { rail: 'ves_c2p',        chargeCurrency: 'VES',  feeBps: 150, feeFixedUsd: 5n,  feeTaxBps: 1600, igtfBps: 0,   quoteTtlSeconds: 300 },
   pago_movil_p2p:     { rail: 'ves_p2p',        chargeCurrency: 'VES',  feeBps: 150, feeFixedUsd: 5n,  feeTaxBps: 1600, igtfBps: 0,   quoteTtlSeconds: 900 },
@@ -42,6 +42,13 @@ export const PAYMENT_METHODS: Record<PaymentMethodType, MethodConfig> = {
   usdt_trc20:         { rail: 'usdt_trc20',     chargeCurrency: 'USDT', feeBps: 120, feeFixedUsd: 10n, feeTaxBps: 0,    igtfBps: 0,   quoteTtlSeconds: 1800 },
   usdt_polygon:       { rail: 'usdt_polygon',   chargeCurrency: 'USDT', feeBps: 120, feeFixedUsd: 10n, feeTaxBps: 0,    igtfBps: 0,   quoteTtlSeconds: 1800 },
   cash:               { rail: 'cash_network',   chargeCurrency: 'USD',  feeBps: 200, feeFixedUsd: 25n, feeTaxBps: 0,    igtfBps: 300, quoteTtlSeconds: 86400 },
+};
+
+/** Nombre para el pagador y el panel. */
+export const METHOD_NAMES: Record<PaymentMethodType, string> = {
+  pago_movil_c2p: 'Pago Móvil C2P', pago_movil_p2p: 'Pago Móvil P2P', debito_inmediato: 'Débito inmediato',
+  card_national: 'Tarjeta nacional', card_international: 'Tarjeta internacional', zelle: 'Zelle',
+  banesco_panama: 'Banesco Panamá', usdt_trc20: 'USDT TRC-20', usdt_polygon: 'USDT Polygon', cash: 'Efectivo en dólares',
 };
 
 export function isPaymentMethodType(v: unknown): v is PaymentMethodType {

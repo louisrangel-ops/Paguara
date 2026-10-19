@@ -61,6 +61,7 @@ export interface PaymentIntentRow {
   settled_at: Date | null;
   canceled_at: Date | null;
   payment_link_id: string | null;
+  payment_method_types: PaymentMethodType[] | null;
 }
 
 /** Columnas que una transición puede modificar. id, comercio, monto y moneda nunca cambian. */
@@ -112,18 +113,19 @@ export class PaymentIntentRepository {
     client: PoolClient,
     row: { id: string; merchantId: string; amount: bigint; currency: Currency; metadata: Record<string, unknown>;
            livemode: boolean; idempotencyKey: string | null; clientSecret: string; customer: Record<string, unknown> | null;
-           ttlSeconds: number; paymentLinkId?: string | null },
+           ttlSeconds: number; paymentLinkId?: string | null; paymentMethodTypes?: string[] | null },
     actor: string,
   ): Promise<{ pi: PaymentIntentRow; created: boolean }> {
     const res = await client.query<PaymentIntentRow>(
       `INSERT INTO payments.payment_intents
-         (id, merchant_id, amount, currency, metadata, livemode, idempotency_key, client_secret, customer, expires_at, payment_link_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(secs => $10), $11)
+         (id, merchant_id, amount, currency, metadata, livemode, idempotency_key, client_secret, customer, expires_at, payment_link_id,
+          payment_method_types)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(secs => $10), $11, $12)
        ON CONFLICT (merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
        RETURNING *`,
       [row.id, row.merchantId, row.amount.toString(), row.currency, JSON.stringify(row.metadata), row.livemode,
        row.idempotencyKey, row.clientSecret, row.customer ? JSON.stringify(row.customer) : null, row.ttlSeconds,
-       row.paymentLinkId ?? null],
+       row.paymentLinkId ?? null, row.paymentMethodTypes ?? null],
     );
     if (res.rowCount === 0) {
       const existing = await client.query<PaymentIntentRow>(
@@ -193,6 +195,7 @@ export function toApi(pi: PaymentIntentRow) {
     amount: s(pi.amount),
     currency: pi.currency,
     payment_method_type: pi.payment_method_type,
+    payment_method_types: pi.payment_method_types,
     charge: pi.charge_currency && {
       amount: s(pi.charge_amount),
       currency: pi.charge_currency,

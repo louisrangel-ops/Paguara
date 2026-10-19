@@ -8,9 +8,13 @@ import { ApiError } from '../common/errors';
 import { REDIS } from '../common/idempotency.interceptor';
 import { MerchantsService } from '../merchants/merchants.service';
 import { PaymentIntentsService } from '../payment-intents/payment-intents.service';
-import { PAYMENT_METHODS } from '../payment-intents/payment-methods';
+import { METHOD_NAMES, PAYMENT_METHODS, PaymentMethodType } from '../payment-intents/payment-methods';
 import { EVENT_TYPES, WebhooksService } from '../webhooks/webhooks.service';
-import { AuthService, DashboardRequest, SessionGuard, assertSameOriginWrite } from './auth.service';
+import { AuthService, DashboardRequest, SessionGuard, assertCanManageAccount, assertSameOriginWrite } from './auth.service';
+import { CapabilitiesService } from '../capabilities/capabilities.service';
+import { allowedFor, assertModuleActive, methodSettings, parseMethodList } from '../capabilities/capability-state';
+import { Pool } from 'pg';
+import { PG_POOL } from '../database/database';
 import { DashboardService } from './dashboard.service';
 
 /** URL pública del sitio (links de pago, checkout). Sin configurar, la del propio pedido. */
@@ -50,9 +54,9 @@ export class DashboardAuthController {
   }
 }
 
-function sessionView(s: { userId: string; name: string; email: string }, merchant: unknown) {
+function sessionView(s: { userId: string; name: string; email: string; role: string }, merchant: unknown) {
   return {
-    user: { id: s.userId, name: s.name, email: s.email },
+    user: { id: s.userId, name: s.name, email: s.email, role: s.role },
     merchant,
     livemode: INSTANCE_LIVEMODE,
     other_mode_url: process.env.OTHER_MODE_DASHBOARD_URL ?? null,
@@ -68,6 +72,8 @@ export class DashboardController {
     private readonly merchants: MerchantsService,
     private readonly payments: PaymentIntentsService,
     private readonly webhooks: WebhooksService,
+    private readonly capabilities: CapabilitiesService,
+    @Inject(PG_POOL) private readonly pool: Pool,
   ) {}
 
   @Get('me')
@@ -130,6 +136,25 @@ export class DashboardController {
     return this.dash.saveSettlementRules(req.session.merchantId, source, b.rules ?? []);
   }
 
+  // ---- Métodos de pago y módulos ----
+  @Get('capabilities')
+  async caps(@Req() req: DashboardRequest) {
+    return { data: await this.capabilities.list(req.session.merchantId) };
+  }
+
+  @Put('capabilities/:key')
+  setCap(@Req() req: DashboardRequest, @Param('key') key: string, @Body() b: { enabled?: unknown }) {
+    assertCanManageAccount(req.session);
+    return this.capabilities.setMerchantEnabled(req.session.merchantId, key, b.enabled, `user:${req.session.userId}`);
+  }
+
+  @Post('capabilities/:key/request')
+  @HttpCode(200)
+  requestCap(@Req() req: DashboardRequest, @Param('key') key: string) {
+    assertCanManageAccount(req.session);
+    return this.capabilities.request(req.session.merchantId, key, `user:${req.session.userId}`);
+  }
+
   // ---- Links de pago ----
   @Get('payment_links')
   async links(@Req() req: DashboardRequest) {
@@ -137,14 +162,16 @@ export class DashboardController {
   }
 
   @Post('payment_links')
-  async createLink(@Req() req: DashboardRequest, @Body() b: { amount?: unknown; currency?: string; description?: string }) {
+  async createLink(@Req() req: DashboardRequest, @Body() b: { amount?: unknown; currency?: string; description?: string; payment_method_types?: unknown }) {
     await this.assertCanOperate(req.session.merchantId);
-    return this.dash.createLink(req.session.merchantId, b, baseUrl(req));
+    await assertModuleActive(this.pool, req.session.merchantId, 'payment_links');
+    return this.dash.createLink(req.session.merchantId, { ...b, payment_method_types: parseMethodList(b.payment_method_types) }, baseUrl(req));
   }
 
   @Post('payment_links/:id/activate')
   @HttpCode(200)
-  activateLink(@Req() req: DashboardRequest, @Param('id') id: string) {
+  async activateLink(@Req() req: DashboardRequest, @Param('id') id: string) {
+    await assertModuleActive(this.pool, req.session.merchantId, 'payment_links');
     return this.dash.setLinkActive(req.session.merchantId, id, true, baseUrl(req));
   }
 
@@ -251,17 +278,13 @@ export class PublicController {
     private readonly payments: PaymentIntentsService,
     private readonly merchants: MerchantsService,
     @Inject(REDIS) private readonly redis: Redis,
+    @Inject(PG_POOL) private readonly pool: Pool,
   ) {}
 
   @Get('api/public/methods')
   methods() {
-    const names: Record<string, string> = {
-      pago_movil_c2p: 'Pago Móvil C2P', pago_movil_p2p: 'Pago Móvil P2P', debito_inmediato: 'Débito inmediato',
-      card_national: 'Tarjeta nacional', card_international: 'Tarjeta internacional', zelle: 'Zelle',
-      banesco_panama: 'Banesco Panamá', usdt_trc20: 'USDT TRC-20', usdt_polygon: 'USDT Polygon', cash: 'Efectivo en dólares',
-    };
     return Object.entries(PAYMENT_METHODS).map(([type, m]) => ({
-      type, name: names[type], currency: m.chargeCurrency, fee_bps: m.feeBps, fixed_usd: m.feeFixedUsd.toString(),
+      type, name: METHOD_NAMES[type as PaymentMethodType], currency: m.chargeCurrency, fee_bps: m.feeBps, fixed_usd: m.feeFixedUsd.toString(),
       tax_bps: m.feeTaxBps, igtf_bps: m.igtfBps,
     }));
   }
@@ -276,8 +299,16 @@ export class PublicController {
     if (!link || link.livemode !== INSTANCE_LIVEMODE) throw new ApiError(404, 'resource_missing', 'Este link de pago no existe o ya no está activo');
     const m = await this.merchants.get(link.merchant_id);
     assertMerchantCanOperate(m.status, link.livemode);
+    await assertModuleActive(this.pool, link.merchant_id, 'payment_links');
+    // Un método del link que el comercio apagó después simplemente no se ofrece
+    let only: PaymentMethodType[] | null = null;
+    if (link.payment_method_types) {
+      const active = new Set(allowedFor(await methodSettings(this.pool, link.merchant_id), null).map((x) => x.type));
+      only = link.payment_method_types.filter((t) => active.has(t));
+      if (only.length === 0) throw new ApiError(409, 'no_payment_methods_available', 'Este link no tiene métodos de pago disponibles por ahora');
+    }
     const pi = await this.payments.create(link.merchant_id, {
-      amount: BigInt(link.amount), currency: link.currency, livemode: link.livemode, paymentLinkId: link.id,
+      amount: BigInt(link.amount), currency: link.currency, livemode: link.livemode, paymentLinkId: link.id, paymentMethodTypes: only,
       metadata: { description: link.description, payment_link: link.id },
     });
     res.setHeader('Referrer-Policy', 'no-referrer');

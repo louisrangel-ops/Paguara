@@ -237,7 +237,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
   const BRAND = { name: 'Paguara' };
 
   // ---------------------------------------------------------------------------
-  // Catálogo de métodos (mismo orden y monedas que src/payment-intents/payment-methods.ts)
+  // Catálogo de métodos (mismo orden y monedas que src/payment-intents/payment-methods.ts).
+  // Solo se muestran los que la API devuelve en payment_methods: lo que el
+  // comercio tiene encendido y, si el pago trae lista, dentro de ella.
   // ---------------------------------------------------------------------------
   const METHODS = [
     { type: 'pago_movil_c2p', name: 'Pago Móvil', sub: 'Con la clave de pago de tu banco', cur: 'VES' },
@@ -267,6 +269,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
     fx_quote_expired: 'La tasa venció antes de confirmar. Actualizamos el monto: revísalo y vuelve a pagar.',
     payment_intent_expired: 'Este enlace de pago venció. Pídele uno nuevo al comercio.',
     resource_missing: 'No encontramos este pago. Revisa el enlace que te envió el comercio.',
+    payment_method_disabled: 'Este comercio ya no acepta ese método. Elige otro.',
+    payment_method_not_allowed: 'Este pago no acepta ese método. Elige otro.',
+    amount_out_of_range: 'El monto no está dentro de los límites de ese método para este comercio. Elige otro.',
   };
   const FIELD_ERRORS = {
     doc: 'Escribe la cédula solo con números, entre 6 y 9 dígitos.',
@@ -328,9 +333,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
       if (!res.ok) throw data.error || { code: 'unknown', message: 'Error ' + res.status };
       // attach/confirm no repiten los datos del comercio; se conservan los del primer GET
       if (data.merchant) merchant = data.merchant; else data.merchant = merchant;
+      if (data.payment_methods) methods = data.payment_methods; else data.payment_methods = methods;
       return data;
     }
-    let merchant = null;
+    let merchant = null, methods = null;
     return {
       demo: false,
       retrieve: () => call('GET', ''),
@@ -378,6 +384,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
       payment_method_type: null, charge: null, fx: null, next_action: null, last_payment_error: null,
       expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(),
       merchant: { name: 'Café El Ávila (ejemplo)', rif: 'J-40123456-7' },
+      // ?metodos=zelle,usdt_trc20 simula un comercio que solo tiene esos encendidos
+      payment_methods: Object.keys(CFG)
+        .filter((t) => !params.get('metodos') || params.get('metodos').split(',').includes(t))
+        .map((t) => ({ type: t, currency: CFG[t].cur, fee_bps: CFG[t].bps, fixed_usd: String(CFG[t].fixed), tax_bps: CFG[t].tax, igtf_bps: CFG[t].igtf, quote_ttl_seconds: CFG[t].ttl })),
     };
     let attempt = 0;
     const clone = () => JSON.parse(JSON.stringify(pi));
@@ -522,9 +532,16 @@ input::placeholder { color: var(--muted); opacity: 1; }
     return el('div', { class: 'banner bad', role: 'alert' }, [el('b', { text: 'No se pudo completar el pago' }), el('span', { text: ERRORS[e.code] || e.message })]);
   }
 
+  function offered(pi) {
+    return pi.payment_methods ? METHODS.filter((m) => pi.payment_methods.some((x) => x.type === m.type)) : METHODS;
+  }
   function methodPicker() {
     const pi = state.pi;
-    return el('div', { class: 'methods', role: 'group', 'aria-labelledby': 'pay-h' }, METHODS.map((m) => {
+    const list = offered(pi);
+    if (!list.length) {
+      return el('div', { class: 'banner bad', role: 'alert' }, [el('b', { text: 'No hay métodos de pago disponibles' }), el('span', { text: 'Este comercio no tiene métodos de pago activos en este momento. Escríbele para que te indique cómo pagar.' })]);
+    }
+    return el('div', { class: 'methods', role: 'group', 'aria-labelledby': 'pay-h' }, list.map((m) => {
       const on = pi.payment_method_type === m.type && !!pi.charge;
       const loading = state.busy === 'attach' && state.selected === m.type;
       return el('button', {

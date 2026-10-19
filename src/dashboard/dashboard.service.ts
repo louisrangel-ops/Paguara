@@ -8,6 +8,8 @@ import { PG_POOL } from '../database/database';
 import { MerchantsService } from '../merchants/merchants.service';
 import { PaymentIntentRow, toApi } from '../payment-intents/payment-intent.repository';
 import { PaymentIntentsService } from '../payment-intents/payment-intents.service';
+import { METHOD_NAMES, PaymentMethodType } from '../payment-intents/payment-methods';
+import { STATE_TEXT, methodSettings } from '../capabilities/capability-state';
 
 const CURRENCIES: Currency[] = ['VES', 'USD', 'USDT'];
 const STATUS_GROUPS: Record<string, string[] | null> = {
@@ -176,14 +178,14 @@ export class DashboardService {
 
   async listLinks(merchantId: string, baseUrl: string) {
     const { rows } = await this.pool.query(
-      `SELECT l.id, l.slug, l.amount::text AS amount, l.currency, l.description, l.active, l.created_at AS created,
+      `SELECT l.id, l.slug, l.amount::text AS amount, l.currency, l.description, l.active, l.payment_method_types, l.created_at AS created,
               count(p.id)::int AS payments_count, count(p.id) FILTER (WHERE p.status IN ('succeeded', 'settled'))::int AS succeeded_count
          FROM payments.payment_links l LEFT JOIN payments.payment_intents p ON p.payment_link_id = l.id
         WHERE l.merchant_id = $1 GROUP BY l.id ORDER BY l.created_at DESC`, [merchantId]);
     return rows.map(({ slug, ...r }) => ({ ...r, url: `${baseUrl}/pay/${slug}` }));
   }
 
-  async createLink(merchantId: string, b: { amount?: unknown; currency?: string; description?: string }, baseUrl: string) {
+  async createLink(merchantId: string, b: { amount?: unknown; currency?: string; description?: string; payment_method_types?: PaymentMethodType[] | null }, baseUrl: string) {
     const amount = typeof b.amount === 'string' && /^\d{1,15}$/.test(b.amount) ? BigInt(b.amount)
       : typeof b.amount === 'number' && Number.isSafeInteger(b.amount) ? BigInt(b.amount) : null;
     if (amount === null || amount <= 0n) throw new ApiError(400, 'amount_invalid', 'Escribe un monto mayor que cero', 'invalid_request_error', { param: 'amount' });
@@ -192,10 +194,19 @@ export class DashboardService {
     if (description.length < 1 || description.length > 200) {
       throw new ApiError(400, 'description_invalid', 'Escribe qué estás cobrando (hasta 200 caracteres)', 'invalid_request_error', { param: 'description' });
     }
+    const only = b.payment_method_types ?? null;
+    if (only) {
+      const off = (await methodSettings(this.pool, merchantId)).find((m) => only.includes(m.type) && m.state !== 'active');
+      if (off) {
+        throw new ApiError(400, 'payment_method_not_allowed', `${METHOD_NAMES[off.type]} no está activo en tu cuenta (${STATE_TEXT[off.state]})`,
+          'invalid_request_error', { param: 'payment_method_types' });
+      }
+    }
     const id = `plink_${randomBytes(8).toString('hex')}`;
     await this.pool.query(
-      `INSERT INTO payments.payment_links (id, merchant_id, slug, amount, currency, description, livemode) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, merchantId, randomBytes(12).toString('base64url').replace(/[-_]/g, 'x'), amount.toString(), b.currency, description, INSTANCE_LIVEMODE]);
+      `INSERT INTO payments.payment_links (id, merchant_id, slug, amount, currency, description, livemode, payment_method_types)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, merchantId, randomBytes(12).toString('base64url').replace(/[-_]/g, 'x'), amount.toString(), b.currency, description, INSTANCE_LIVEMODE, only]);
     return (await this.listLinks(merchantId, baseUrl)).find((l) => l.id === id);
   }
 
@@ -206,8 +217,9 @@ export class DashboardService {
   }
 
   async findActiveLink(slug: string) {
-    const { rows } = await this.pool.query<{ id: string; merchant_id: string; amount: string; currency: Currency; description: string; livemode: boolean }>(
-      `SELECT id, merchant_id, amount::text, currency, description, livemode FROM payments.payment_links WHERE slug = $1 AND active`, [slug]);
+    const { rows } = await this.pool.query<{ id: string; merchant_id: string; amount: string; currency: Currency; description: string; livemode: boolean;
+                                             payment_method_types: PaymentMethodType[] | null }>(
+      `SELECT id, merchant_id, amount::text, currency, description, livemode, payment_method_types FROM payments.payment_links WHERE slug = $1 AND active`, [slug]);
     return rows[0] ?? null;
   }
 }

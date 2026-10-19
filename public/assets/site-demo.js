@@ -26,7 +26,7 @@
     banesco_panama: 'Banesco Panamá', usdt_trc20: 'USDT', usdt_polygon: 'USDT Polygon', cash: 'Efectivo en dólares',
   };
   const EVENT_TYPES = ['payment_intent.created', 'payment_intent.requires_action', 'payment_intent.succeeded',
-    'payment_intent.payment_failed', 'payment_intent.canceled', 'payment_intent.settled', 'payout.created'];
+    'payment_intent.payment_failed', 'payment_intent.canceled', 'payment_intent.settled', 'payout.created', 'account.capability.updated'];
 
   // ---------------------------------------------------------------------------
   // Aritmética exacta
@@ -74,7 +74,18 @@
     id: 'acct_demo4f1c', business_name: 'Café El Ávila (ejemplo)', rif: 'J-40123456-7',
     status: 'pending_kyc', kyc_submitted_at: null, created: iso(now - 40 * DAY),
   };
-  let user = { id: 'usr_demo91a2', name: 'María Fernández', email: 'maria@cafeelavila.example' };
+  let user = { id: 'usr_demo91a2', name: 'María Fernández', email: 'maria@cafeelavila.example', role: 'owner' };
+  // Interruptores por comercio (misma forma que GET /api/dashboard/capabilities)
+  const CAP_STATE = Object.assign(Object.fromEntries(Object.keys(CFG).map((k) => [k, 'active'])), {
+    card_national: 'disabled', banesco_panama: 'not_granted', usdt_polygon: 'pending_review', payment_links: 'active', webhooks: 'active',
+  });
+  const MODULE_NAMES = { payment_links: 'Links de pago', webhooks: 'Webhooks' };
+  function capView(key) {
+    const st = CAP_STATE[key], c = CFG[key];
+    const v = { object: 'capability', key, kind: c ? 'method' : 'module', name: c ? METHOD_NAMES[key] : MODULE_NAMES[key], state: st,
+      can_toggle: st === 'active' || st === 'disabled', can_request: st === 'not_granted' };
+    return c ? Object.assign(v, { currency: c.cur, fee_bps: c.bps, fixed_usd: String(c.fixed), tax_bps: c.tax, igtf_bps: c.igtf, custom_pricing: false, min_amount: null, max_amount: null }) : v;
+  }
   let loggedIn = true;
 
   const PRODUCTS = [
@@ -408,11 +419,28 @@
       rules[m[1]] = JSON.parse(JSON.stringify(list));
       return { rules: JSON.parse(JSON.stringify(rules)) };
     }],
+    ['GET', /^\/capabilities$/, () => { need(); return { data: Object.keys(CAP_STATE).map(capView) }; }],
+    ['PUT', /^\/capabilities\/(\w+)$/, (m, b) => {
+      need();
+      if (!(m[1] in CAP_STATE)) fail(404, 'resource_missing', 'No existe la capacidad ' + m[1]);
+      const v = capView(m[1]);
+      if (!v.can_toggle) fail(409, 'capability_locked', 'No puedes cambiar ' + v.name + ' por ahora.');
+      CAP_STATE[m[1]] = b.enabled ? 'active' : 'disabled';
+      return capView(m[1]);
+    }],
+    ['POST', /^\/capabilities\/(\w+)\/request$/, (m) => {
+      need();
+      if (CAP_STATE[m[1]] !== 'not_granted') fail(409, 'capability_not_requestable', 'Eso no se puede solicitar.');
+      CAP_STATE[m[1]] = 'pending_review';
+      return capView(m[1]);
+    }],
     ['GET', /^\/payment_links$/, () => { need(); return { data: JSON.parse(JSON.stringify(links)) }; }],
     ['POST', /^\/payment_links$/, (m, b) => {
       need();
       if (!amountOk(b.amount)) fail(422, 'amount_invalid', 'El monto debe ser mayor que cero.');
-      const l = { id: 'plink_' + hex(10), url: DEMO_CHECKOUT_URL, amount: b.amount, currency: b.currency, description: b.description || '', active: true, created: new Date().toISOString(), payments_count: 0, succeeded_count: 0 };
+      if (CAP_STATE.payment_links !== 'active') fail(403, 'feature_disabled', 'Links de pago no está activo en esta cuenta.');
+      const only = b.payment_method_types || null;
+      const l = { id: 'plink_' + hex(10), url: DEMO_CHECKOUT_URL + (only ? '?metodos=' + only.join(',') : ''), amount: b.amount, currency: b.currency, description: b.description || '', active: true, payment_method_types: only, created: new Date().toISOString(), payments_count: 0, succeeded_count: 0 };
       links.unshift(l);
       return Object.assign({}, l);
     }],

@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, ExecutionContext, HttpCode, Inject, Injectable, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, HttpCode, Inject, Injectable, Param, Post, UseGuards } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { ApiError } from '../common/errors';
@@ -13,6 +13,7 @@ import { SettlementsService } from './settlements.service';
 import { Pool } from 'pg';
 import { PG_POOL, withTransaction } from '../database/database';
 import { LedgerService } from '../ledger/ledger.service';
+import { CapabilitiesService, PlatformMerchantPatch } from '../capabilities/capabilities.service';
 
 /** Endpoints para workers internos y el panel administrativo (KYC, conciliación, tesorería). */
 @Injectable()
@@ -42,6 +43,7 @@ export class InternalController {
     private readonly merchants: MerchantsService,
     private readonly ledger: LedgerService,
     @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly capabilities: CapabilitiesService,
   ) {}
 
   /**
@@ -90,6 +92,27 @@ export class InternalController {
     await this.merchants.setSettlementRules(id, currency(b.source_currency),
       b.rules.map((r) => ({ targetCurrency: currency(r.target_currency), bps: r.bps, destination: r.destination })));
     return { ok: true };
+  }
+
+  /** Interruptor global de un método o módulo (riel caído, banco sin convenio) y si se da a comercios nuevos. */
+  @Post('capabilities/:key')
+  @HttpCode(200)
+  setGlobalCapability(@Param('key') key: string, @Body() b: { global_enabled?: boolean; default_for_new?: boolean; actor?: string }) {
+    return this.capabilities.platformSetGlobal(key, b, `platform:${b.actor ?? 'internal'}`);
+  }
+
+  @Get('merchants/:id/capabilities')
+  async merchantCapabilities(@Param('id') id: string) {
+    await this.merchants.get(id);
+    return { object: 'list', data: await this.capabilities.list(id) };
+  }
+
+  /** Aprobar o bloquear un método/módulo a un comercio, o fijarle precio y límites negociados. */
+  @Post('merchants/:id/capabilities/:key')
+  @HttpCode(200)
+  setMerchantCapability(@Param('id') id: string, @Param('key') key: string, @Body() b: PlatformMerchantPatch & { actor?: string }) {
+    const { actor, ...patch } = b;
+    return this.capabilities.platformSetForMerchant(id, key, patch, `platform:${actor ?? 'internal'}`);
   }
 
   @Post('payment_intents/expire')

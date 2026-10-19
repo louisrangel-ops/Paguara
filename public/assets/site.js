@@ -952,7 +952,7 @@
   // ---------------------------------------------------------------------------
   const DASH_NAV = [
     ['', 'Inicio', 'home'], ['pagos', 'Pagos', 'pay'], ['saldos', 'Saldos', 'wallet'],
-    ['links', 'Links de pago', 'link'], ['desarrolladores', 'Desarrolladores', 'code'], ['ajustes', 'Ajustes', 'sliders'],
+    ['links', 'Links de pago', 'link'], ['metodos', 'Métodos de pago', 'card'], ['desarrolladores', 'Desarrolladores', 'code'], ['ajustes', 'Ajustes', 'sliders'],
   ];
   function kycInfo(m) {
     if (m.status === 'active') return { text: 'Cuenta activa', tone: 'ok' };
@@ -1545,10 +1545,15 @@
     setTitle('Links de pago');
     const slot = el('section', { class: 'card flush', 'aria-label': 'Links de pago' }, [el('div', { style: 'padding:20px' }, [skel(5)])]);
     const create = el('button', { class: 'btn', type: 'button', text: 'Crear link', onclick: () => createLinkDialog(refresh) });
-    main.replaceChildren(pageHead('Links de pago', 'Un enlace fijo para compartir por WhatsApp o Instagram. Cada vez que alguien lo abre se crea un pago nuevo.', [create]), slot);
+    const note = el('div');
+    main.replaceChildren(pageHead('Links de pago', 'Un enlace fijo para compartir por WhatsApp o Instagram. Cada vez que alguien lo abre se crea un pago nuevo.', [create]), note, slot);
     async function refresh(focusId) {
-      const d = await load(main, tok, slot, () => api.get('/payment_links'));
+      const [d, caps] = await Promise.all([load(main, tok, slot, () => api.get('/payment_links')), api.get('/capabilities').catch(() => null)]);
       if (!d) return;
+      const mod = caps && caps.data.find((c) => c.key === 'payment_links');
+      const off = mod && mod.state !== 'active';
+      create.disabled = !!off;
+      note.replaceChildren(off ? el('div', { class: 'banner warn', role: 'note' }, [el('b', { text: 'Los links de pago están apagados' }), el('span', {}, ['Tus clientes no pueden abrirlos. ', el('a', { href: '#/dashboard/metodos', text: 'Enciéndelos en Métodos de pago' }), '.'])]) : '');
       if (!d.data.length) { slot.replaceChildren(emptyState('Aún no tienes links de pago', 'Crea uno con un monto fijo y compártelo con tus clientes: no necesitas programar.', el('button', { class: 'btn ghost', type: 'button', text: 'Crear link', onclick: () => createLinkDialog(refresh) }))); return; }
       slot.replaceChildren(el('div', { class: 'table-wrap', style: 'border:0;border-radius:0' }, [el('table', { class: 'stack-sm' }, [
         el('caption', { class: 'sr-only', text: 'Links de pago' }),
@@ -1564,7 +1569,8 @@
             catch (e) { setBusy(tg, false); toast(e.message); }
           });
           return el('tr', {}, [
-            el('th', { scope: 'row' }, [l.description || 'Sin descripción', u]),
+            el('th', { scope: 'row' }, [l.description || 'Sin descripción', u,
+              l.payment_method_types ? el('span', { class: 'muted cap-only', text: 'Solo ' + l.payment_method_types.map((t) => METHOD_NAMES[t] || t).join(', ') }) : null]),
             el('td', { class: 'r', 'data-label': 'Monto' }, [money(l.amount, l.currency)]),
             el('td', {}, [l.active ? pill('Activo', 'ok') : pill('Inactivo', '')]),
             el('td', { 'data-label': 'Pagos', text: l.succeeded_count + ' exitosos de ' + l.payments_count }),
@@ -1577,23 +1583,40 @@
     }
     refresh();
   };
-  function createLinkDialog(after) {
+  async function createLinkDialog(after) {
+    let active = [];
+    try { active = (await api.get('/capabilities')).data.filter((c) => c.kind === 'method' && c.state === 'active' && CHECKOUT_METHODS.includes(c.key)); }
+    catch (_) { /* sin la lista, el link acepta todos los métodos activos */ }
     openDialog({
       title: 'Crear link de pago',
       body: (dlg) => {
         const a = amountField('nl', 'USD');
         const desc = field({ id: 'nl-desc', label: 'Qué vendes', attrs: { autocomplete: 'off', required: true, placeholder: '1 kg de café de Caripe…', maxlength: '200' }, hint: 'Lo ve tu cliente en el checkout.' });
+        const allR = el('input', { type: 'radio', name: 'nl-m', id: 'nl-m-all', checked: true });
+        const someR = el('input', { type: 'radio', name: 'nl-m', id: 'nl-m-some' });
+        const boxes = active.map((c) => el('input', { type: 'checkbox', id: 'nl-m-' + c.key, value: c.key, checked: true }));
+        const picks = el('div', { class: 'cap-picks', hidden: true }, active.map((c, i) => el('label', { class: 'check', for: boxes[i].id }, [boxes[i], c.name])));
+        [allR, someR].forEach((x) => x.addEventListener('change', () => { picks.hidden = !someR.checked; }));
+        const mErr = el('div', { id: 'nl-m-err' });
+        const fs = active.length > 1 ? el('fieldset', { class: 'field', 'aria-describedby': 'nl-m-err' }, [
+          el('legend', { text: 'Métodos que acepta' }),
+          el('label', { class: 'check', for: 'nl-m-all' }, [allR, 'Todos los que tengas activos']),
+          el('label', { class: 'check', for: 'nl-m-some' }, [someR, 'Solo algunos']),
+          picks, mErr,
+        ]) : null;
         const err = el('div');
         const btn = el('button', { class: 'btn', type: 'submit', text: 'Crear link' });
-        const form = el('form', { class: 'form', novalidate: true }, [desc, a.f, err, el('div', { class: 'dlg-actions' }, [el('button', { class: 'btn quiet', type: 'button', text: 'Cancelar', onclick: () => dlg.close() }), btn])]);
+        const form = el('form', { class: 'form', novalidate: true }, [desc, a.f, fs, err, el('div', { class: 'dlg-actions' }, [el('button', { class: 'btn quiet', type: 'button', text: 'Cancelar', onclick: () => dlg.close() }), btn])]);
         form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          err.replaceChildren();
+          err.replaceChildren(); mErr.replaceChildren();
           const di = desc.querySelector('input');
           if (!validate([[di, (v) => (v.trim() ? null : 'Describe lo que vendes.')], [a.amount, (v) => (parseAmount(v, a.cur.value) ? null : 'Escribe un monto mayor que cero, con hasta ' + EXP[a.cur.value] + ' decimales.')]])) return;
+          const only = someR.checked ? boxes.filter((b) => b.checked).map((b) => b.value) : null;
+          if (only && !only.length) { mErr.append(el('span', { class: 'err', text: 'Elige al menos un método.' })); boxes[0].focus(); return; }
           setBusy(btn, true, 'Creando…');
           try {
-            const l = await api.post('/payment_links', { amount: parseAmount(a.amount.value, a.cur.value), currency: a.cur.value, description: di.value.trim() });
+            const l = await api.post('/payment_links', { amount: parseAmount(a.amount.value, a.cur.value), currency: a.cur.value, description: di.value.trim(), payment_method_types: only });
             const u = el('code', { translate: 'no', text: l.url });
             dlg.set('Link creado', [
               el('p', {}, ['Comparte este enlace para cobrar ', el('b', { class: 'num', text: fmt(l.amount, l.currency) }), ' por “' + l.description + '”.']),
@@ -1608,6 +1631,90 @@
       },
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Panel: Métodos de pago y módulos (interruptores por comercio)
+  // ---------------------------------------------------------------------------
+  const CAP_STATE = {
+    active: ['Activo', 'ok'], disabled: ['Apagado', ''], pending_review: ['En revisión', 'note'],
+    not_granted: ['No habilitado', 'warn'], blocked: ['Bloqueado por ' + BRAND.name, 'bad'], unavailable: ['No disponible por ahora', ''],
+  };
+  const CAP_HINT = {
+    pending_review: 'Lo estamos revisando. Te avisaremos al correo de la cuenta.',
+    not_granted: 'No viene incluido en tu cuenta. Pídelo y lo revisamos.',
+    blocked: 'Escríbenos para saber por qué y cómo reactivarlo.',
+    unavailable: 'Está apagado para todos los comercios mientras resolvemos una falla con el banco o el proveedor.',
+  };
+  const MODULE_INFO = {
+    payment_links: 'Enlaces fijos para cobrar por WhatsApp o Instagram sin programar.',
+    webhooks: 'Avisos firmados a tu servidor cuando cambia un pago. Apagado, los eventos se guardan pero no se envían.',
+  };
+  // Métodos que el checkout alojado ya sabe mostrar (los demás se cobran por API)
+  const CHECKOUT_METHODS = ['pago_movil_c2p', 'pago_movil_p2p', 'zelle', 'usdt_trc20', 'card_international', 'cash'];
+  const canManage = () => ['owner', 'admin'].includes((state.session.user || {}).role || 'owner');
+  function feeText(c) {
+    let t = pct(c.fee_bps) + (c.fixed_usd && c.fixed_usd !== '0' ? ' + ' + fmt(c.fixed_usd, 'USD') : '') + (c.tax_bps ? ' + IVA' : '');
+    if (c.igtf_bps) t += '. El pagador paga IGTF de ' + pct(c.igtf_bps);
+    return 'Cobras en ' + SYMBOL[c.currency] + '. Comisión ' + t + (c.custom_pricing ? ' (precio acordado con tu cuenta)' : '') + '.';
+  }
+  DASH.metodos = function (main, r, tok) {
+    setTitle('Métodos de pago');
+    const methods = el('section', { class: 'card flush', 'aria-labelledby': 'cap-m-h' }, [el('div', { style: 'padding:20px' }, [skel(6)])]);
+    const modules = el('section', { class: 'card flush', 'aria-labelledby': 'cap-x-h' }, [el('div', { style: 'padding:20px' }, [skel(2)])]);
+    main.replaceChildren(...[
+      pageHead('Métodos de pago', 'Elige qué métodos de pago ven tus clientes en el checkout y qué partes del producto usas.'),
+      canManage() ? null : el('div', { class: 'banner info', role: 'note' }, [el('b', { text: 'Solo lectura' }), el('span', { text: 'Solo el dueño o un administrador de la cuenta puede cambiar estos interruptores.' })]),
+      methods, modules,
+    ].filter(Boolean));
+    async function refresh(focusKey) {
+      const d = await load(main, tok, methods, () => api.get('/capabilities'));
+      if (!d) return;
+      const list = (kind) => d.data.filter((c) => c.kind === kind);
+      const activeCount = list('method').filter((c) => c.state === 'active').length;
+      methods.replaceChildren(...[
+        el('div', { class: 'card-head' }, [el('h2', { id: 'cap-m-h', text: 'Métodos de pago' }), el('span', { class: 'muted', text: activeCount + ' de ' + list('method').length + ' activos' })]),
+        activeCount ? null : el('div', { class: 'banner warn', role: 'alert', style: 'margin:16px 20px 0' }, [el('b', { text: 'No tienes métodos activos' }), el('span', { text: 'Mientras no enciendas al menos uno no podrás crear pagos ni links.' })]),
+        el('ul', { class: 'cap-list' }, list('method').map((c) => capRow(c, feeText(c) + (CHECKOUT_METHODS.includes(c.key) ? '' : ' Todavía no aparece en el checkout alojado; se cobra por la API.')))),
+      ].filter(Boolean));
+      modules.replaceChildren(
+        el('div', { class: 'card-head' }, [el('h2', { id: 'cap-x-h', text: 'Módulos' })]),
+        el('ul', { class: 'cap-list' }, list('module').map((c) => capRow(c, MODULE_INFO[c.key] || ''))),
+      );
+      if (focusKey) { const b = $('cap-' + focusKey); if (b) b.focus(); }
+    }
+    function capRow(c, info) {
+      const [label, tone] = CAP_STATE[c.state] || [c.state, ''];
+      const descId = 'cap-d-' + c.key;
+      let control = null;
+      if (c.can_toggle) {
+        const on = c.state === 'active';
+        control = el('button', { class: 'switch', type: 'button', role: 'switch', id: 'cap-' + c.key, 'aria-checked': String(on), 'aria-label': c.name, 'aria-describedby': descId, disabled: !canManage() }, [el('span', { class: 'knob', 'aria-hidden': 'true' })]);
+        control.addEventListener('click', async () => {
+          control.disabled = true;
+          try {
+            const n = await api.put('/capabilities/' + encodeURIComponent(c.key), { enabled: !on });
+            toast(n.name + (n.state === 'active' ? ' encendido' : ' apagado'));
+            await refresh(c.key);
+          } catch (e) { control.disabled = false; toast(e.message); }
+        });
+      } else if (c.can_request) {
+        control = el('button', { class: 'btn ghost sm', type: 'button', id: 'cap-' + c.key, text: 'Solicitar', 'aria-label': 'Solicitar ' + c.name, disabled: !canManage() });
+        control.addEventListener('click', async () => {
+          setBusy(control, true, 'Enviando…');
+          try { await api.post('/capabilities/' + encodeURIComponent(c.key) + '/request'); toast('Solicitud enviada'); await refresh(c.key); }
+          catch (e) { setBusy(control, false); toast(e.message); }
+        });
+      }
+      return el('li', { class: 'cap-row' }, [
+        el('div', { class: 'cap-text' }, [
+          el('div', { class: 'cap-name' }, [el('b', { text: c.name }), pill(label, tone)]),
+          el('p', { class: 'muted', id: descId, text: [info, CAP_HINT[c.state]].filter(Boolean).join(' ') }),
+        ]),
+        control,
+      ]);
+    }
+    refresh();
+  };
 
   // ---------------------------------------------------------------------------
   // Panel: Desarrolladores (llaves, webhooks, eventos)

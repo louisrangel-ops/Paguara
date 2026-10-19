@@ -8,7 +8,8 @@ import { PublishableKeyGuard, SecretKeyGuard } from './common/api-key.guard';
 import { FxService } from './fx/fx.service';
 import { LedgerService } from './ledger/ledger.service';
 import { PaymentIntentRepository } from './payment-intents/payment-intent.repository';
-import { CheckoutController, PaymentIntentsController } from './payment-intents/payment-intents.controller';
+import { AccountCapabilitiesController, CheckoutController, PaymentIntentsController } from './payment-intents/payment-intents.controller';
+import { CapabilitiesService } from './capabilities/capabilities.service';
 import { PaymentIntentsService } from './payment-intents/payment-intents.service';
 import { PAYMENT_METHODS } from './payment-intents/payment-methods';
 import { RAIL_ADAPTERS, RailAdapter } from './payment-intents/rails/rail-adapter';
@@ -29,7 +30,7 @@ function sandboxRails(): Map<string, RailAdapter> {
 }
 
 @Module({
-  controllers: [PaymentIntentsController, CheckoutController, CheckoutPageController, InternalController,
+  controllers: [PaymentIntentsController, CheckoutController, AccountCapabilitiesController, CheckoutPageController, InternalController,
     DashboardAuthController, DashboardController, PublicController, SitePageController, HealthController],
   providers: [
     { provide: PG_POOL, useFactory: () => createPool() },
@@ -49,6 +50,7 @@ function sandboxRails(): Map<string, RailAdapter> {
     SessionGuard,
     DashboardService,
     WebhooksService,
+    CapabilitiesService,
   ],
   exports: [PG_POOL, LedgerService, FxService, PaymentIntentsService, SettlementsService],
 })
