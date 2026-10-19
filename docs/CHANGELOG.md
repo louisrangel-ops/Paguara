@@ -9,9 +9,9 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
-- [Docs] Documentación técnica en `docs/` (arquitectura, datos, ledger, PaymentIntents, FX, métodos de pago, API, webhooks, liquidaciones, configuración, despliegue, seguridad) y este CHANGELOG.
-- [Docs] `CONTRIBUTING.md` y plantilla de PR: todo cambio de código, esquema, API o configuración actualiza la documentación y el CHANGELOG en el mismo PR.
-- [Docs] README: corrige cómo se rota el secreto de un webhook (no existe ruta para borrar endpoints) y aclara que `Idempotency-Key` se exige en la API v1 y el checkout, no en `/internal`.
+- [Docs] Documentación técnica en `docs/` (arquitectura, datos, ledger, PaymentIntents, FX, métodos de pago, API, webhooks, liquidaciones, configuración, despliegue, seguridad) y este CHANGELOG (#5).
+- [Docs] `CONTRIBUTING.md` y plantilla de PR: todo cambio de código, esquema, API o configuración actualiza la documentación y el CHANGELOG en el mismo PR (#5).
+- [Docs] README: corrige cómo se rota el secreto de un webhook (no existe ruta para borrar endpoints) y aclara que `Idempotency-Key` se exige en la API v1 y el checkout, no en `/internal` (#5).
 
 ## 2026-10-19
 
