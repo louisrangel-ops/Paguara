@@ -1,0 +1,79 @@
+# Rieles y métodos de pago
+
+Código: `src/payment-intents/payment-methods.ts`, `pricing.ts`, `rails/`.
+
+## Métodos
+
+Cada método define su riel, la moneda en que se cobra y su precio. Los precios viven en código
+(`PAYMENT_METHODS`) y se moverán a configuración por comercio (**pendiente**).
+
+| Método (`payment_method_type`) | Riel | Moneda de cobro | MDR | Fijo (USD) | IVA s/comisión | IGTF | TTL cotización |
+|---|---|---|---|---|---|---|---|
+| `pago_movil_c2p` | `ves_c2p` | VES | 1,50 % | 0,05 | 16 % | — | 5 min |
+| `pago_movil_p2p` | `ves_p2p` | VES | 1,50 % | 0,05 | 16 % | — | 15 min |
+| `debito_inmediato` | `ves_debito_inm` | VES | 1,50 % | 0,05 | 16 % | — | 5 min |
+| `card_national` | `ves_card_switch` | VES | 3,80 % | — | 16 % | — | 5 min |
+| `card_international` | `offshore_card` | USD | 4,90 % | 0,40 | — | — | 15 min |
+| `zelle` | `zelle` | USD | 2,50 % | 0,25 | — | — | 30 min |
+| `banesco_panama` | `banesco_panama` | USD | 2,50 % | 0,25 | — | — | 15 min |
+| `usdt_trc20` | `usdt_trc20` | USDT | 1,20 % | 0,10 | — | — | 30 min |
+| `usdt_polygon` | `usdt_polygon` | USDT | 1,20 % | 0,10 | — | — | 30 min |
+| `cash` | `cash_network` | USD | 2,00 % | 0,25 | — | 3 % | 24 h |
+
+`GET /api/public/methods` publica esta tabla (en bps) para el sitio.
+
+## Desglose (`computeBreakdown`)
+
+Sobre el precio ya convertido a la moneda del cobro:
+
+```
+comisión = precio × MDR + fijo (convertido)
+IVA      = comisión × feeTaxBps
+IGTF     = precio × igtfBps          (solo efectivo; lo paga el pagador ENCIMA del precio)
+neto     = precio − comisión − IVA   (lo que recibe el comercio)
+charge   = precio + IGTF = comisión + IVA + neto + IGTF
+```
+
+Si el neto queda ≤ 0 → 400 `amount_too_small`. La BD verifica `charge = fee + tax + net + igtf` (`CHECK breakdown_adds_up`).
+
+Ejemplo efectivo: precio 50,00 USD → el pagador entrega 51,50; el IGTF (1,50) queda en `platform:tax_payable:igtf:USD`.
+
+## Interfaz de riel (`rails/rail-adapter.ts`)
+
+```ts
+interface RailAdapter { readonly rail: string; charge(req: RailChargeRequest): Promise<RailResult> }
+```
+
+`RailChargeRequest`: `paymentIntentId`, `attemptKey` (idempotencia hacia el banco, cambia en cada intento), `method`,
+`currency`, `amount`, `details`. `RailResult`: `succeeded {reference}`, `pending {reference}`,
+`requires_action {reference?, nextAction}` o `failed {code, message, reference?}`.
+
+Códigos de rechazo: `insufficient_funds`, `do_not_honor`, `invalid_c2p_token`, `invalid_account`, `bank_unavailable`,
+`action_expired`, `card_declined`, `processing_error`.
+
+Los resultados asíncronos (webhook del banco, match de Pago Móvil P2P, confirmación on-chain, conciliación Zelle)
+entran por `POST /internal/payment_intents/:id/rail_result {source, result}`.
+
+## Riel sandbox (`rails/sandbox.rail.ts`)
+
+**Hoy es el único riel**: `AppModule` registra un `SandboxRail` por cada riel, también con `LIVEMODE=true`.
+Resultados deterministas:
+
+| Entrada | Resultado |
+|---|---|
+| `details.phone` termina en `0002` | `failed` `insufficient_funds` |
+| `details.phone` termina en `0003` | `failed` `invalid_c2p_token` |
+| `pago_movil_p2p` | `requires_action` `pago_movil_transfer` (banco, teléfono, RIF, monto, pista de referencia) |
+| `zelle` | `requires_action` `zelle_transfer` |
+| `usdt_trc20` / `usdt_polygon` | `requires_action` `crypto_transfer` (red y dirección de prueba) |
+| `cash` | `requires_action` `cash_voucher` |
+| `card_international` con `details.token = "tok_3ds"` | `requires_action` `three_d_secure` |
+| Cualquier otro caso | `succeeded` |
+
+Referencia: `sbx_<attemptKey>`.
+
+## Pendiente
+
+Conectores reales que implementen `RailAdapter`: C2P y débito inmediato por banco, switch de tarjetas nacionales
+(ISO 8583), tarjetas internacionales, Banesco Panamá, Zelle, listeners TRON y Polygon, red de efectivo; y el
+reconciliador de intents que quedaron en `processing`.

@@ -3,6 +3,8 @@
 Primer bloque del "Stripe venezolano": el motor contable de doble partida y el ciclo de vida de un cobro,
 con la tasa de cambio congelada desde que el pagador confirma. NestJS + TypeScript, PostgreSQL 16, Redis.
 
+**Documentación técnica completa:** [`docs/`](docs/README.md). Todo cambio de código, esquema, API o configuración la actualiza en el mismo PR, junto con el [CHANGELOG técnico](docs/CHANGELOG.md) (ver [`CONTRIBUTING.md`](CONTRIBUTING.md)).
+
 ## Cómo correrlo
 
 Todo en Docker (API, PostgreSQL, Redis y las tareas de desarrollo), con la configuración de `.env.development`:
@@ -48,7 +50,7 @@ CI (`.github/workflows/ci.yml`) corre typecheck, pruebas unitarias y de integrac
 - Con `COOKIE_SECURE` distinto de `false` o `LIVEMODE=true` la API no arranca si `INTERNAL_API_TOKEN` es el de ejemplo o tiene menos de 32 caracteres.
   Generar uno con `openssl rand -hex 32`.
 - Rotación: `INTERNAL_API_TOKEN` se cambia en Variables y se reinician la API y `dev-jobs`; las llaves `sk_` de un comercio se rotan con
-  *Rotar* en el panel (crea una nueva y revoca la anterior); el secreto `whsec_` de un webhook, borrando el endpoint y creándolo de nuevo.
+  *Rotar* en el panel (crea una nueva y revoca la anterior); el secreto `whsec_` de un webhook, creando un endpoint nuevo y desactivando el anterior (todavía no hay forma de borrarlo).
 - En tu máquina, `pre-commit install` activa gitleaks antes de cada commit (`.pre-commit-config.yaml`).
 
 ## Ciclo de vida de un PaymentIntent
@@ -120,7 +122,7 @@ Liquidación      Dr available 1.433,75 / Cr fx_spread_revenue:VES −17,20     
 
 Concurrencia: lock de fila del intent (`FOR UPDATE`) en cada transición; partidas insertadas en orden de `account_id` para que asientos concurrentes no hagan deadlock; reintento automático ante `40001`/`40P01`. Auditoría: las vistas `ledger.balance_drift` y `ledger.trial_balance` deben estar vacías / en cero.
 
-Idempotencia: `Idempotency-Key` obligatorio en todo POST (Redis `SET NX`): repite la respuesta guardada, `409` si la misma llave está en curso, `422` si se reusa con otro cuerpo. Aunque Redis falle, la BD impide el doble cobro (lock + estado + llave única del asiento).
+Idempotencia: `Idempotency-Key` obligatorio en todo POST de la API v1 y del checkout (Redis `SET NX`): repite la respuesta guardada, `409` si la misma llave está en curso, `422` si se reusa con otro cuerpo. Aunque Redis falle, la BD impide el doble cobro (lock + estado + llave única del asiento).
 
 ## Checkout web
 
