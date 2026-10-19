@@ -37,10 +37,11 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 | `src/fx/` | `fx.service.ts`, `fx.math.ts` | [Tasas y cotizaciones](fx.md) |
 | `src/payment-intents/` | controlador, servicio, repositorio, máquina de estados, `payment-methods.ts`, `pricing.ts`, `rails/` | [PaymentIntents](payment-intents.md) y [métodos de pago](metodos-de-pago.md) |
 | `src/merchants/` | `merchants.service.ts` | Comercios, KYC, llaves API, reglas de liquidación |
+| `src/capabilities/` | `capabilities.service.ts`, `capability-state.ts` | [Métodos y módulos por comercio](modulos-por-comercio.md): estado efectivo, precios negociados, auditoría |
 | `src/settlements/` | `settlements.service.ts`, `internal.controller.ts` | [Liquidaciones](liquidaciones.md) y la API interna |
 | `src/webhooks/` | `webhooks.service.ts` | [Webhooks](webhooks.md): outbox y worker de entrega |
 | `src/dashboard/` | `auth.service.ts`, `dashboard.controller.ts`, `dashboard.service.ts` | Sesiones, panel del comercio, links de pago, sitio |
-| `src/` | `health.controller.ts`, `checkout-page.controller.ts` | `/health` y la página de checkout |
+| `src/` | `health.controller.ts`, `checkout-page.controller.ts`, `admin-page.controller.ts` | `/health`, la página de checkout y el panel interno `/admin` |
 
 ## Controladores y rutas
 
@@ -48,12 +49,14 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 |---|---|---|
 | `PaymentIntentsController` | `/v1/payment_intents` | `SecretKeyGuard` (`sk_`) + `IdempotencyInterceptor` |
 | `CheckoutController` | `/v1/checkout/payment_intents` | `PublishableKeyGuard` (`pk_`) + `client_secret` + `IdempotencyInterceptor` |
+| `AccountCapabilitiesController` | `/v1/account/capabilities` | `SecretKeyGuard` (`sk_`), sin interceptor de idempotencia |
 | `InternalController` | `/internal` | `InternalTokenGuard` (`X-Internal-Token`) |
 | `DashboardAuthController` | `/api/dashboard` (signup, login, logout) | Ninguna; exige `X-Requested-With: fetch` |
 | `DashboardController` | `/api/dashboard` | `SessionGuard` (cookie `sid`) |
 | `PublicController` | `/api/public/methods`, `/pay/:slug` | Ninguna |
 | `SitePageController` | `/` | Ninguna (HTML del sitio, `X-Frame-Options: DENY`) |
 | `CheckoutPageController` | `/checkout` | Ninguna (HTML; `Referrer-Policy: no-referrer`, `Cache-Control: no-store`) |
+| `AdminPageController` | `/admin` | Ninguna para el HTML (no trae datos); cada llamada que hace exige `X-Internal-Token` |
 | `HealthController` | `/health` | Ninguna; 200 solo si PostgreSQL y Redis responden |
 
 Detalle de cada ruta en [api.md](api.md) y [dashboard-api.md](dashboard-api.md).
@@ -82,10 +85,10 @@ Worker de webhooks    ──▶ entrega firmada a los endpoints del comercio con
 ## Estructura del repositorio
 
 ```
-db/migrations/        SQL 001–007, aplicado en orden por scripts/migrate.ts
+db/migrations/        SQL 001–009, aplicado en orden por scripts/migrate.ts
 src/                  aplicación NestJS (ver tabla de módulos)
 scripts/              migrate.ts, dev-jobs.ts, seed.ts
-public/               checkout.html, site.html, assets/ (site.css, site.js, site-demo.js)
+public/               checkout.html, site.html, admin.html, assets/ (site.css, site.js, site-demo.js)
 test/unit/            pruebas puras (dinero, plantillas de asientos, máquina de estados, chequeo de secretos)
 test/integration/     pruebas contra PostgreSQL real (crean y borran una BD temporal)
 docs/                 esta documentación
@@ -96,4 +99,5 @@ docs/                 esta documentación
 
 - `public/checkout.html`: checkout alojado tipo Stripe Checkout. Habla solo con `/v1/checkout/...`. Sin parámetros corre en modo demostración.
 - `public/site.html` + `public/assets/`: una sola página con rutas por hash (`#/`, `#/docs`, `#/entrar`, `#/registro`, `#/dashboard/...`). El servidor inyecta `window.__SERVER__ = true`; fuera del servidor corre en modo demo (`site-demo.js`).
+- `public/admin.html`: panel interno de operaciones (solicitudes de métodos/módulos, interruptores globales, ficha de comercio). Pide el `INTERNAL_API_TOKEN` al operador y lo guarda en `sessionStorage`.
 - La marca es la constante `BRAND` en `public/assets/site.js` y en el script de `checkout.html`. Diseño en [`DESIGN.md`](../DESIGN.md).

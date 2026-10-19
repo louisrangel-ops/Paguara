@@ -9,11 +9,28 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Docs] Documentación de los PRs #4 y #6 en arquitectura, modelo de datos (migraciones 008 y 009), PaymentIntents, métodos de pago, API, webhooks, liquidaciones, seguridad y pruebas; `modulos-por-comercio.md` en el índice (#7).
 - [Docs] Documentación técnica en `docs/` (arquitectura, datos, ledger, PaymentIntents, FX, métodos de pago, API, webhooks, liquidaciones, configuración, despliegue, seguridad) y este CHANGELOG (#5).
 - [Docs] `CONTRIBUTING.md` y plantilla de PR: todo cambio de código, esquema, API o configuración actualiza la documentación y el CHANGELOG en el mismo PR (#5).
 - [Docs] README: corrige cómo se rota el secreto de un webhook (no existe ruta para borrar endpoints) y aclara que `Idempotency-Key` se exige en la API v1 y el checkout, no en `/internal` (#5).
 
 ## 2026-10-19
+
+### #6 · Interruptores por comercio: liquidaciones en divisas, panel interno y checkout completo
+- [Esquema] Migración 009: módulos `settlement_usdt` y `settlement_usd` (otorgados a los comercios existentes) e índice de solicitudes pendientes.
+- [Liquidaciones] Guardar una regla que convierte a USDT o USD exige su módulo (403 `feature_disabled`); el corte salta al comercio con `settlement_module_disabled` y sus pagos esperan al próximo corte.
+- [API] `GET /internal/capabilities` (con conteos) y `GET /internal/capability_requests` (bandeja).
+- [Web] Panel interno en `/admin` (`public/admin.html`, `AdminPageController`): solicitudes, interruptores globales y ficha de comercio, con el token interno en `sessionStorage`.
+- [Web] El checkout pinta los diez métodos, incluidos formularios de débito inmediato y tarjeta nacional, y la transferencia de Banesco Panamá.
+- [Rieles] `SandboxRail`: `banesco_panama` responde `requires_action` con `bank_transfer`.
+
+### #4 · Interruptores por comercio: métodos de pago y módulos
+- [Esquema] Migración 008: `platform.capabilities`, `merchants.capabilities`, `merchants.capability_changes`, función `merchants.capability_state` y `payment_method_types` en pagos y links.
+- [API] `payment_method_types` al crear pagos y links; validación en `attach`/`confirm` (`payment_method_not_allowed`, `payment_method_disabled`, `amount_out_of_range`, `no_payment_methods_available`); precios y límites negociados por comercio.
+- [API] `GET/POST /v1/account/capabilities`, `POST /internal/capabilities/:key`, `GET/POST /internal/merchants/:id/capabilities[/:key]`; el checkout devuelve `payment_methods`.
+- [Dashboard] `GET /capabilities`, `PUT /capabilities/:key`, `POST /capabilities/:key/request`, solo para `owner`/`admin` (`insufficient_role`); la sesión expone el rol.
+- [Webhooks] Evento `account.capability.updated`; con el módulo `webhooks` apagado no se programan ni entregan envíos.
+- [Docs] `docs/modulos-por-comercio.md`.
 
 ### #3 · Seguridad de secretos
 - [Seguridad] La API no arranca en despliegues públicos (`LIVEMODE=true` o `COOKIE_SECURE` ≠ `false`) con `INTERNAL_API_TOKEN` de ejemplo o de menos de 32 caracteres, ni con `LIVEMODE=true` y `COOKIE_SECURE=false` (`src/common/secrets-check.ts`, llamado desde `main.ts`; pruebas en `test/unit/secrets-check.test.ts`).

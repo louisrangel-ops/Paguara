@@ -24,16 +24,21 @@ unidades mínimas** (también se aceptan números enteros seguros en la entrada)
 
 | Método | Ruta | Cuerpo | Respuesta |
 |---|---|---|---|
-| POST | `/v1/payment_intents` | `{amount, currency, customer?, metadata?, expires_in?}` | `PaymentIntent` (incluye `client_secret`) |
+| POST | `/v1/payment_intents` | `{amount, currency, customer?, metadata?, expires_in?, payment_method_types?}` | `PaymentIntent` (incluye `client_secret`) |
 | GET | `/v1/payment_intents/:id` | — | `PaymentIntent` |
 | POST | `/v1/payment_intents/:id/attach` | `{payment_method_type, fx_source?}` | `PaymentIntent` |
 | POST | `/v1/payment_intents/:id/confirm` | `{payment_method_details?}` | `PaymentIntent` |
 | POST | `/v1/payment_intents/:id/cancel` | `{cancellation_reason?}` | `PaymentIntent` |
+| GET | `/v1/account/capabilities` | — | `{object:'list', data: Capability[]}` |
+| POST | `/v1/account/capabilities/:key` | `{enabled}` | `Capability` (actor `api_key`) |
+
+`/v1/account/capabilities` no usa el interceptor de idempotencia (encender o apagar es idempotente por sí mismo).
+`Capability` está descrito en [dashboard-api.md](dashboard-api.md#métodos-de-pago-y-módulos).
 
 `currency`: `VES`, `USD`, `EUR`, `USDT`. `expires_in` en segundos (60 a 2.592.000). Un intent de otro comercio responde 404.
 
 ```
-PaymentIntent = { id, object: 'payment_intent', status, amount, currency, payment_method_type,
+PaymentIntent = { id, object: 'payment_intent', status, amount, currency, payment_method_type, payment_method_types,
   charge: {amount, currency, fee, tax, net, igtf} | null,
   fx: {quote_id, rate, source, expires_at, frozen} | null,
   next_action, last_payment_error, cancellation_reason, metadata, customer,
@@ -50,7 +55,8 @@ PaymentIntent = { id, object: 'payment_intent', status, amount, currency, paymen
 
 El `client_secret` se compara en tiempo constante; si no coincide responde 404 sin revelar nada. La vista del checkout
 (`toCheckoutApi`) no incluye `metadata` (salvo `description`), `customer`, comisión ni neto, y no permite cancelar ni elegir `fx_source`.
-El GET agrega `merchant: {name, rif}`.
+El GET agrega `merchant: {name, rif}` y `payment_methods`: los métodos que el pagador puede elegir en ese pago
+(activos en el comercio y dentro de `payment_method_types`), cada uno con `{type, name, currency, fee_bps, fixed_usd, tax_bps, igtf_bps, quote_ttl_seconds}`.
 
 La página `GET /checkout?pi=<id>&cs=<client_secret>&pk=<pk_…>` (`public/checkout.html`) usa esta API.
 
@@ -67,6 +73,11 @@ La página `GET /checkout?pi=<id>&cs=<client_secret>&pk=<pk_…>` (`public/check
 | POST | `/internal/payment_intents/expire` | — | Vence intents abandonados → `{canceled}` |
 | POST | `/internal/rail_batches` | `{batch_id, rail, currency, payment_intent_ids}` | Concilia fondos recibidos |
 | POST | `/internal/settlement_batches` | `{batch_code, source_currency, min_amount?, spread_bps?}` | Corte de lote |
+| GET | `/internal/capabilities` | — | Catálogo con `merchants_active` y `pending` por capacidad |
+| POST | `/internal/capabilities/:key` | `{global_enabled?, default_for_new?, actor?}` | Interruptor global |
+| GET | `/internal/capability_requests` | — | Solicitudes en `pending_review`, las más viejas primero |
+| GET | `/internal/merchants/:id/capabilities` | — | Capacidades de un comercio |
+| POST | `/internal/merchants/:id/capabilities/:key` | `{platform_status?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?, actor?}` | Aprobar, bloquear o negociar (`null` vuelve al valor de plataforma) |
 | POST | `/internal/treasury/contributions` | `{currency, amount, reference}` | Aporte de capital (idempotente por `reference`) |
 
 El token se compara en tiempo constante. Sin `INTERNAL_API_TOKEN` configurado, todo `/internal` responde 401.
@@ -77,6 +88,7 @@ La API interna no usa el interceptor de idempotencia: cada operación es idempot
 
 | Ruta | Qué hace |
 |---|---|
+| `GET /admin` | Panel interno de operaciones (`public/admin.html`) |
 | `GET /health` | `{ok:true}` si PostgreSQL y Redis responden; si no, 503 `unhealthy` |
 | `GET /` | Sitio, docs y dashboard (`public/site.html`) |
 | `GET /api/public/methods` | Métodos y precios |
@@ -105,11 +117,11 @@ Forma: `{ "error": { "type", "code", "message", ...extra } }` (`ApiExceptionFilt
 
 | HTTP | Códigos |
 |---|---|
-| 400 | `amount_invalid`, `amount_too_small`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request` |
+| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request` |
 | 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials` |
-| 403 | `account_restricted`, `account_not_activated`, `csrf_rejected` |
+| 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role` |
 | 404 | `resource_missing` |
-| 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked` |
+| 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked`, `capability_locked`, `capability_not_requestable`, `no_payment_methods_available` (en `/pay/:slug`) |
 | 422 | `idempotency_key_reused` |
 | 429 | `too_many_attempts`, `too_many_requests` |
 | 500 | `internal_error`, `rail_unavailable` |

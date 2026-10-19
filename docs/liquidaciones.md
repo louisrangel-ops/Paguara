@@ -23,6 +23,8 @@ Ejemplo: VES → 60 % VES a cuenta bancaria + 40 % USDT a wallet TRC-20.
 - API interna: `POST /internal/merchants/:id/settlement_rules`.
 - Dashboard: `PUT /api/dashboard/settlement_rules/:source` (1 a 3 destinos, monedas VES/USD/USDT sin repetir, `destination` ≤ 1000 caracteres en JSON).
 - Reemplaza todas las reglas de esa moneda origen en una transacción.
+- Convertir a USDT o a USD exige el módulo `settlement_usdt` o `settlement_usd` activo (403 `feature_disabled`).
+  Liquidar en la misma moneda o convertir a VES no exige módulo (`settlementModuleFor`).
 
 ## 3. Corte de lote
 
@@ -31,7 +33,9 @@ Lo debe disparar un cron por moneda y hora de corte (**pendiente**: hoy no hay c
 
 1. Crea o reutiliza el lote por `batch_code` (p. ej. `2026-10-16-VES-1800`).
 2. Agrupa por comercio los intents `succeeded` con fondos recibidos en esa moneda.
-3. Comercios con neto menor que `min_amount` → `skipped: below_minimum`. Sin regla → `no_settlement_rule`.
+3. Comercios con neto menor que `min_amount` → `skipped: below_minimum`. Sin regla → `no_settlement_rule`. Si una
+   regla convierte a una divisa cuyo módulo no está activo → `settlement_module_disabled`: sus pagos siguen en
+   `succeeded` para el próximo corte.
 4. Cada comercio va en **su propia transacción**: un error en uno no detiene al resto (queda en `skipped` con su código).
 5. Por comercio: vuelve a bloquear los intents, congela una cotización de 60 s por cada porción convertida
    (fuente por defecto del par), registra el asiento `merchant_payout`, crea `settlements.payouts` y una

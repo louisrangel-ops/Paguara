@@ -8,13 +8,18 @@ Código: `src/webhooks/webhooks.service.ts`. Esquema: `webhooks.*` (migración 0
 `webhooks.events` y una fila en `webhooks.deliveries` por cada endpoint `enabled` del comercio suscrito a ese tipo
 (o a `*`). Si la transacción se deshace, el evento también: nunca se avisa algo que no pasó ni se pierde algo que sí pasó.
 
+**Módulo `webhooks`** ([modulos-por-comercio.md](modulos-por-comercio.md)): con el módulo apagado el evento igual se
+registra (se ve en el panel) pero no se programan entregas, y el worker no toma las pendientes de ese comercio hasta
+que se encienda. Crear o activar un endpoint, enviar una prueba y reenviar un evento responden 403 `feature_disabled`.
+
 ## Tipos de evento (`EVENT_TYPES`)
 
 `payment_intent.created`, `payment_intent.requires_action`, `payment_intent.succeeded`,
-`payment_intent.payment_failed`, `payment_intent.canceled`, `payment_intent.settled`, `payout.created`.
+`payment_intent.payment_failed`, `payment_intent.canceled`, `payment_intent.settled`, `payout.created`,
+`account.capability.updated`.
 
 Cuándo se emite cada uno: [payment-intents.md](payment-intents.md#webhooks-que-emite); `payout.created` en cada
-liquidación del corte de lote.
+liquidación del corte de lote; `account.capability.updated` cuando cambia un método o módulo del comercio (por él o por la plataforma), con la capacidad nueva como objeto.
 
 Cuerpo:
 ```json

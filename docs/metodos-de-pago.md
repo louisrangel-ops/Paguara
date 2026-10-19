@@ -4,8 +4,9 @@ Código: `src/payment-intents/payment-methods.ts`, `pricing.ts`, `rails/`.
 
 ## Métodos
 
-Cada método define su riel, la moneda en que se cobra y su precio. Los precios viven en código
-(`PAYMENT_METHODS`) y se moverán a configuración por comercio (**pendiente**).
+Cada método define su riel, la moneda en que se cobra y su precio de plataforma (`PAYMENT_METHODS`). Un comercio
+puede tener MDR y fijo negociados, y mínimo y máximo por pago, en `merchants.capabilities`; además cada método se
+enciende o apaga por comercio ([modulos-por-comercio.md](modulos-por-comercio.md)). Nombres para el pagador en `METHOD_NAMES`.
 
 | Método (`payment_method_type`) | Riel | Moneda de cobro | MDR | Fijo (USD) | IVA s/comisión | IGTF | TTL cotización |
 |---|---|---|---|---|---|---|---|
@@ -20,7 +21,8 @@ Cada método define su riel, la moneda en que se cobra y su precio. Los precios 
 | `usdt_polygon` | `usdt_polygon` | USDT | 1,20 % | 0,10 | — | — | 30 min |
 | `cash` | `cash_network` | USD | 2,00 % | 0,25 | — | 3 % | 24 h |
 
-`GET /api/public/methods` publica esta tabla (en bps) para el sitio.
+`GET /api/public/methods` publica los precios de plataforma (en bps) para el sitio. El checkout recibe en
+`payment_methods` solo los métodos que ese pago acepta, con los precios del comercio.
 
 ## Desglose (`computeBreakdown`)
 
@@ -65,6 +67,7 @@ Resultados deterministas:
 | `details.phone` termina en `0003` | `failed` `invalid_c2p_token` |
 | `pago_movil_p2p` | `requires_action` `pago_movil_transfer` (banco, teléfono, RIF, monto, pista de referencia) |
 | `zelle` | `requires_action` `zelle_transfer` |
+| `banesco_panama` | `requires_action` `bank_transfer` (banco, cuenta, tipo, titular, concepto) |
 | `usdt_trc20` / `usdt_polygon` | `requires_action` `crypto_transfer` (red y dirección de prueba) |
 | `cash` | `requires_action` `cash_voucher` |
 | `card_international` con `details.token = "tok_3ds"` | `requires_action` `three_d_secure` |
