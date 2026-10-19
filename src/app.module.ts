@@ -18,6 +18,7 @@ import { SettlementsService } from './settlements/settlements.service';
 import { AuthService, SessionGuard } from './dashboard/auth.service';
 import { DashboardAuthController, DashboardController, PublicController, SitePageController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+import { HealthController } from './health.controller';
 import { WebhooksService } from './webhooks/webhooks.service';
 
 /** Mientras no haya conectores reales, todos los rieles usan el sandbox (también en LIVEMODE=true: no hay rieles live aún). */
@@ -29,7 +30,7 @@ function sandboxRails(): Map<string, RailAdapter> {
 
 @Module({
   controllers: [PaymentIntentsController, CheckoutController, CheckoutPageController, InternalController,
-    DashboardAuthController, DashboardController, PublicController, SitePageController],
+    DashboardAuthController, DashboardController, PublicController, SitePageController, HealthController],
   providers: [
     { provide: PG_POOL, useFactory: () => createPool() },
     { provide: REDIS, useFactory: () => new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379') },

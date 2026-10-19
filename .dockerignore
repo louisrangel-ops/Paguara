@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.git
+dump.rdb
+docs
+video
+*.log

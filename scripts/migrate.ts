@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createPool } from '../src/database/database';
 
@@ -11,7 +11,8 @@ export async function migrate(databaseUrl = process.env.DATABASE_URL): Promise<s
     await client.query('CREATE TABLE IF NOT EXISTS public.schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
     await client.query('SELECT pg_advisory_lock(726354)');
     const done = new Set((await client.query<{ name: string }>('SELECT name FROM public.schema_migrations')).rows.map((r) => r.name));
-    const dir = join(__dirname, '..', 'db', 'migrations');
+    // Con tsx corre desde scripts/; compilado, desde dist/scripts/.
+    const dir = [join(__dirname, '..', 'db', 'migrations'), join(__dirname, '..', '..', 'db', 'migrations')].find(existsSync)!;
     for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
       if (done.has(file)) continue;
       await client.query('BEGIN');

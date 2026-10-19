@@ -5,15 +5,41 @@ con la tasa de cambio congelada desde que el pagador confirma. NestJS + TypeScri
 
 ## Cómo correrlo
 
+Todo en Docker (API, PostgreSQL, Redis y las tareas de desarrollo), con la configuración de `.env.development`:
+
 ```bash
-docker compose up -d                 # PostgreSQL 16 + Redis 7
-cp .env.example .env && export $(cat .env | xargs)
+docker compose up -d --build         # migra al arrancar; http://localhost:3000/health responde {"ok":true}
+docker compose run --rm seed         # usuario del panel (dev@paguara.test / paguara-dev-123) y llaves sk_test_/pk_test_
+```
+
+El servicio `dev-jobs` carga tasas **fijas** (`DEV_FX_RATES`) cada hora y vence los cobros abandonados cada minuto.
+Sin él, los cobros en VES fallan con `fx_rate_unavailable` porque todavía no existe el job real de tasas. Se niega a correr con `LIVEMODE=true`.
+
+Sin Docker para la app (solo la base y Redis en contenedores):
+
+```bash
+docker compose up -d postgres redis
+set -a; . ./.env.development; set +a
 npm install
 npm run migrate                      # aplica db/migrations/*.sql
 npm test                             # 19 pruebas unitarias
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:integration   # 25 pruebas contra PostgreSQL real
-npm run build && npm start
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:integration   # 31 pruebas contra PostgreSQL real
+npm run build && npm start           # en otras terminales: npm run dev:jobs y npm run seed
 ```
+
+`.env.development` no tiene secretos y relaja lo que exige HTTPS (`COOKIE_SECURE=false`, webhooks a `http://`). Para un entorno público
+parte de `.env.example`, con un `INTERNAL_API_TOKEN` propio y `COOKIE_SECURE=true`.
+
+### Desplegar el entorno de desarrollo en Railway
+
+1. Nuevo proyecto desde el repo de GitHub; Railway detecta el `Dockerfile` (la imagen migra y arranca la API). Healthcheck: `/health`.
+2. Agregar PostgreSQL y Redis al proyecto y pasar sus URLs a la API como `DATABASE_URL` y `REDIS_URL`.
+3. Variables: las de `.env.development`, cambiando `INTERNAL_API_TOKEN` por uno aleatorio, `PUBLIC_BASE_URL` por el dominio que asigne Railway,
+   `COOKIE_SECURE=true`, `WEBHOOK_ALLOW_PRIVATE=false` y `TRUST_PROXY=1`.
+4. Segundo servicio desde el mismo repo con comando de inicio `node dist/scripts/dev-jobs.js` y `APP_URL` apuntando a la API.
+5. Una vez: `railway run npm run seed` con `APP_URL` igual a la URL pública.
+
+CI (`.github/workflows/ci.yml`) corre typecheck, pruebas unitarias y de integración, y construye la imagen en cada PR.
 
 ## Ciclo de vida de un PaymentIntent
 
