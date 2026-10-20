@@ -71,6 +71,8 @@ Quién puede: **S** token de sistema (workers, cron), **O** cualquier operador, 
 | GET | `/internal/operators` | — | M | Operadores con rol y si están revocados |
 | POST | `/internal/operators/:id/revoke` | — | M | Revoca el token (no a sí mismo) |
 | POST | `/internal/merchants` | `{business_name, rif, webhook_url?}` | M | Crea comercio (`pending_kyc`) |
+| GET | `/internal/merchants/:id` | — | S, O, M | KYC completo + perfil ISO 8583 para revisión |
+| POST | `/internal/merchants/:id/iso8583_profile` | `{status?, mcc, acquirer_merchant_id, terminal_id, acquiring_institution_id, currency_numeric?, pos_entry_mode?, pos_condition_code?}` | M | Provisiona identificadores técnicos del adquirente |
 | POST | `/internal/merchants/:id/status` | `{status}` | M | Aprueba o suspende tras KYC |
 | POST | `/internal/merchants/:id/api_keys` | `{kind, livemode}` | M | Crea llave y la devuelve en claro |
 | POST | `/internal/merchants/:id/settlement_rules` | `{source_currency, rules: [{target_currency: 'VES', bps: 10000, destination}]}` | M | Cuenta en bolívares para esa moneda cobrada |
