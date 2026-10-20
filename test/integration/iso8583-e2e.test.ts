@@ -26,7 +26,7 @@ test('E2E ISO8583: PaymentIntent -> 0100/0110 -> succeeded -> ledger -> concilia
 
   assert.equal(pi.status, 'succeeded');
   assert.ok(pi.capture_entry_id);
-  assert.match(pi.rail_reference ?? '', /^\\d{12}$/);
+  assert.match(pi.rail_reference ?? '', /^\d{12}$/);
 
   const entries = await ctx.pool.query<{ n: number }>(
     "SELECT count(*)::int AS n FROM ledger.journal_entries WHERE kind = 'payment_capture' AND reference_id = $1", [pi.id]);
