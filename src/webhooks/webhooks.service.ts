@@ -170,7 +170,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
       const body = JSON.stringify(r.payload);
       const result = await post(r.url, body, {
         'Content-Type': 'application/json', 'User-Agent': 'PasarelaWebhooks/1.0', 'Webhook-Id': r.event_id,
-        'Webhook-Signature': signPayload(openSecret(r.secret), body, Math.floor(Date.now() / 1000)),
+        'Webhook-Signature': signPayload(await openSecret(r.secret), body, Math.floor(Date.now() / 1000)),
       });
       const attempts = r.attempts + 1;
       const status = result.ok ? 'succeeded' : attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
@@ -197,7 +197,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
     const secret = `whsec_${randomBytes(24).toString('hex')}`;
     await this.pool.query(
       `INSERT INTO webhooks.endpoints (id, merchant_id, url, secret, enabled_events) VALUES ($1, $2, $3, $4, $5)`,
-      [id, merchantId, validateEndpointUrl(url), sealSecret(secret), clean]);
+      [id, merchantId, validateEndpointUrl(url), await sealSecret(secret), clean]);
     return { ...(await this.getEndpoint(merchantId, id)), secret };
   }
 
@@ -221,7 +221,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pool.query<{ secret: string }>(
       'SELECT secret FROM webhooks.endpoints WHERE id = $1 AND merchant_id = $2', [id, merchantId]);
     if (!rows[0]) throw notFound('el webhook', id);
-    return { secret: openSecret(rows[0].secret) };
+    return { secret: await openSecret(rows[0].secret) };
   }
 
   async setStatus(merchantId: string, id: string, status: 'enabled' | 'disabled') {

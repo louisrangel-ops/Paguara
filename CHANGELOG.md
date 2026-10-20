@@ -5,6 +5,9 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 ## 2026-10-20
 
 ### Agregado
+- **Doble factor (2FA)**: app autenticadora y códigos de respaldo, obligatorio en el panel interno y opcional para los comercios. Ver [docs/doble-factor.md](docs/doble-factor.md).
+- **Gestor de secretos (KMS)**: las llaves y certificados de los bancos y los demás secretos se cifran con AWS KMS en producción. Ver [docs/gestor-de-secretos.md](docs/gestor-de-secretos.md).
+- **Conciliación bancaria diaria** contra el ledger, con diferencias y alertas (migración 012). Ver [docs/conciliacion.md](docs/conciliacion.md).
 - **Documentos legales (borradores)**: términos y condiciones, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable, como páginas del sitio en `#/legal`. El registro exige aceptarlos y guarda la constancia (migración 011). Deben pasar por un abogado venezolano antes de publicarse. Ver [docs/legal.md](docs/legal.md).
 
 ### Cambiado

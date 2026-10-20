@@ -36,7 +36,9 @@ Sin Docker para la app: `docker compose up -d postgres redis`, cargar `.env.deve
 | `build` | `tsc` a `dist/` |
 | `start` | `node dist/src/main.js` |
 | `migrate` / `migrate:dist` | Aplica migraciones (con `tsx` / compilado) |
-| `dev:jobs`, `seed` | Procesos de desarrollo con `tsx` |
+| `dev:jobs`, `seed` | Procesos de desarrollo con `tsx` (`dev-jobs` también concilia contra el banco simulado) |
+| `reconcile` | Conciliación diaria de todos los rieles (cron); en la imagen `node dist/scripts/reconcile.js` |
+| `secrets:rewrap` | Vuelve a cifrar los secretos con la llave activa tras rotarla o pasar a AWS KMS ([gestor-de-secretos.md](gestor-de-secretos.md#rotación)) |
 | `typecheck` | `tsc --noEmit` |
 | `test` | Pruebas unitarias (`test/unit/*.test.ts`, `node:test` vía `tsx`) |
 | `test:integration` | Pruebas contra PostgreSQL real, una a la vez; necesitan `DATABASE_URL` a un servidor (crean y borran una BD temporal) |
@@ -74,18 +76,28 @@ Las llaves de prueba no sirven en producción ni las live en el sandbox (401 `wr
 
 ## Producción
 
-**Pendiente** (rieles reales, job de tasas, conciliación). Lo que el código ya impone con `LIVEMODE=true`:
+**Pendiente** (rieles reales, job de tasas). Lo que el código ya impone con `LIVEMODE=true`:
 
 - No arranca si queda algún riel de prueba (`buildRails` en `src/app.module.ts`).
-- `COOKIE_SECURE` distinto de `false`, `INTERNAL_API_TOKEN` propio de ≥ 32 caracteres, `SECRETS_ENCRYPTION_KEY`
-  (64 hex, cifra los secretos de webhooks), `INTERNAL_PORT` distinto de `PORT` y `PAYOUT_APPROVALS_REQUIRED` ≥ 2.
+- `COOKIE_SECURE` distinto de `false`, `INTERNAL_API_TOKEN` propio de ≥ 32 caracteres, `KMS_PROVIDER=aws` con
+  `KMS_KEY_ID` (la llave local no se acepta), `INTERNAL_PORT` distinto de `PORT` y `PAYOUT_APPROVALS_REQUIRED` ≥ 2.
 - `dev-jobs` y `seed` se niegan a correr.
 
 `INTERNAL_PORT` sirve `/internal` y `/admin` y debe quedar solo en la red privada (VPN o red interna del hosting),
 nunca expuesto al público; en el puerto público esas rutas dan 404. El primer maestro se crea una sola vez con el
 token de sistema (`POST /internal/operators {name, role: 'master'}` por el puerto interno); su token `opk_…` se
 muestra una vez y desde ahí el maestro crea a los demás desde `/admin`. En desarrollo lo hace `npm run seed`
-(maestro `maestro-dev`; también al repetirlo sobre una base que ya tenía el comercio de prueba, si aún no hay maestro). Antes de cobrar dinero real falta además la rotación de llaves con KMS.
+(maestro `maestro-dev`; también al repetirlo sobre una base que ya tenía el comercio de prueba, si aún no hay maestro).
+Al entrar por primera vez a `/admin` cada persona activa su app autenticadora ([doble-factor.md](doble-factor.md)).
+
+Además, en producción:
+
+- **AWS KMS**: crear una llave simétrica con rotación automática, dar al rol del servicio solo `kms:GenerateDataKey`
+  y `kms:Decrypt` sobre ella, y definir `KMS_PROVIDER=aws`, `KMS_KEY_ID` y `AWS_REGION`. Si la base ya tenía secretos
+  con la llave local, correr `secrets:rewrap` una vez ([gestor-de-secretos.md](gestor-de-secretos.md)).
+- **Cron diario de conciliación** a las 06:00 de Caracas (10:00 UTC): `node dist/scripts/reconcile.js` con `APP_URL`
+  apuntando al puerto interno. Subir los extractos de los bancos sin API antes de esa hora ([conciliacion.md](conciliacion.md)).
+- **`ALERT_WEBHOOK_URL`** del canal de operaciones.
 
 ## CI (`.github/workflows/ci.yml`)
 
@@ -104,10 +116,14 @@ En cada PR y en cada push a `main`:
 | `test/unit/entry-templates.test.ts` | Asientos de captura, fondos y liquidación cuadrados |
 | `test/unit/state-machine.test.ts` | Transiciones permitidas y prohibidas |
 | `test/unit/secrets-check.test.ts` | Chequeo de configuración del arranque |
-| `test/unit/hardening.test.ts` | Arranque live sin rieles de prueba, rutas internas, reglas de límite de peticiones, cifrado de secretos |
+| `test/unit/hardening.test.ts` | Arranque live sin rieles de prueba, rutas internas, reglas de límite de peticiones |
+| `test/unit/kms.test.ts` | Cifrado por sobre local y AWS (cliente falso), propósito atado al dato, rotación, formatos anteriores |
+| `test/unit/totp.test.ts` | Vectores del RFC 6238, desfase de reloj, códigos de respaldo, parser de extractos, fecha de Caracas |
 | `test/integration/ledger.test.ts` | Triggers del ledger, idempotencia de asientos, 100 asientos concurrentes sin deadlock |
 | `test/integration/payment-intent-flow.test.ts` | Tabla SQL = tabla TS, flujo completo, P2P, rechazos, cotización vencida, confirmaciones simultáneas, USDT, IGTF, aislamiento entre comercios |
 | `test/integration/merchants-checkout.test.ts` | Llaves, KYC, RIF, checkout con `client_secret`, idempotencia durable, vencimiento, saldos no editables, corte de lote |
 | `test/integration/capabilities.test.ts` | Defaults y solicitudes, métodos apagados, lista por pago, bloqueo global, precios y límites negociados, módulos de links/webhooks, métodos por contrato y sandbox, panel interno, Banesco Panamá en sandbox |
 | `test/integration/payout-approvals.test.ts` | Operadores y roles, doble aprobación de liquidaciones, triggers de la BD, instrucciones solo en VES |
 | `test/integration/dashboard.test.ts` | scrypt, registro y sesiones, límite de login, outbox y entrega de webhooks, SSRF, listados |
+| `test/integration/security.test.ts` | 2FA del comercio (inscripción, repetición, respaldo, login en dos pasos, bloqueo, reinicio), sesiones de operador con 2FA, secretos de bancos cifrados y versionados, rewrap |
+| `test/integration/reconciliation.test.ts` | Cruce por referencia y monto, liberación de fondos, diferencias y su cierre, alertas sin repetir, extracto faltante, job diario con el banco simulado |

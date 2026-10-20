@@ -126,6 +126,36 @@ export class AuthService {
     return rows[0].id;
   }
 
+  /**
+   * Contraseña correcta con doble factor activo: todavía no hay sesión. Se
+   * entrega un token de un solo uso, válido 5 minutos, que con el código de la
+   * app se cambia por la sesión (POST /login/mfa).
+   */
+  async createMfaChallenge(userId: string): Promise<string> {
+    const token = `mfa_${randomBytes(24).toString('base64url')}`;
+    await this.redis.set(`login:mfa:${sha256(token)}`, userId, 'EX', 5 * 60);
+    return token;
+  }
+
+  async mfaChallengeUser(token: string): Promise<string | null> {
+    if (!/^mfa_[A-Za-z0-9_-]{32}$/.test(token ?? '')) return null;
+    return this.redis.get(`login:mfa:${sha256(token)}`);
+  }
+
+  async consumeMfaChallenge(token: string) {
+    await this.redis.del(`login:mfa:${sha256(token)}`);
+  }
+
+  /** Cierra todas las sesiones de una persona (reinicio de doble factor). */
+  async revokeAllSessions(userId: string) {
+    await this.pool.query('UPDATE dashboard.sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
+  }
+
+  async checkPassword(userId: string, password: string): Promise<boolean> {
+    const { rows } = await this.pool.query<{ password_hash: string }>('SELECT password_hash FROM dashboard.users WHERE id = $1', [userId]);
+    return verifyPassword(password ?? '', rows[0]?.password_hash ?? DUMMY_HASH);
+  }
+
   async startSession(userId: string, res: Response): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     await this.pool.query(

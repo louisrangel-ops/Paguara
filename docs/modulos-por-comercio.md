@@ -88,10 +88,10 @@ El precio que se cobra en `attach` es el del comercio si tiene uno negociado, si
 - **Panel interno** en `/admin` (solo en el puerto interno, `INTERNAL_PORT`): bandeja de solicitudes (aprobar con
   la referencia del contrato, o rechazar), interruptores globales con cuántos comercios tienen cada capacidad, y la
   ficha de un comercio para permitir, bloquear o fijar precio y límites. Cada persona entra con su propio token de
-  operador (`opk_…`, queda en `sessionStorage` y se borra al cerrar la pestaña); la auditoría guarda
+  operador (`opk_…` más el código de su app autenticadora; la sesión `ops_…` queda en `sessionStorage` y se borra al cerrar la pestaña); la auditoría guarda
   `platform:<nombre>`. El token de sistema no sirve para el panel. Los operadores ven las bandejas; solo el maestro
   cambia. Rechazar deja la capacidad en `blocked`.
-- **Plataforma** (`X-Internal-Token: opk_…`; **O** cualquier operador, **M** solo el maestro):
+- **Plataforma** (`X-Internal-Token: ops_…`, la sesión del operador; **O** cualquier operador, **M** solo el maestro):
   - O `GET /internal/capabilities`: catálogo con `merchants_active` y `pending` por capacidad
   - O `GET /internal/capability_requests`: solicitudes en `pending_review`, las más viejas primero
   - M `POST /internal/capabilities/:key {global_enabled?, default_for_new?}`
@@ -133,9 +133,9 @@ curl https://api.paguara.test/v1/payment_intents \
 Apagar efectivo para un comercio por riesgo, y habilitarle Zelle por contrato al 1 % sin fijo (token del maestro):
 
 ```bash
-curl -X POST .../internal/merchants/acct_123/capabilities/cash -H "X-Internal-Token: opk_..." \
+curl -X POST .../internal/merchants/acct_123/capabilities/cash -H "X-Internal-Token: ops_..." \
   -d '{"platform_status":"blocked"}'
-curl -X POST .../internal/merchants/acct_123/capabilities/zelle -H "X-Internal-Token: opk_..." \
+curl -X POST .../internal/merchants/acct_123/capabilities/zelle -H "X-Internal-Token: ops_..." \
   -d '{"platform_status":"allowed","contract_ref":"CTR-2026-0142","fee_bps":100,"fee_fixed_usd":0}'
 ```
 

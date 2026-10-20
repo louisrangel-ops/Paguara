@@ -7,7 +7,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | Documento | Contenido |
 |---|---|
 | [Arquitectura y módulos](arquitectura.md) | Procesos, módulos NestJS, flujo de un pedido, estructura del repo |
-| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–011 |
+| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–012 |
 | [Ledger y plan de cuentas](ledger.md) | Doble partida multi-moneda, cuentas, plantillas de asientos, garantías de la BD |
 | [Máquina de estados del PaymentIntent](payment-intents.md) | Estados, eventos, congelamiento de tasa, vencimiento, idempotencia |
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |
@@ -17,11 +17,14 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [API del dashboard](dashboard-api.md) | Contrato web ↔ servidor del panel del comercio |
 | [Webhooks](webhooks.md) | Outbox, eventos, firma, reintentos, protección SSRF |
 | [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote en bolívares, spread y doble aprobación |
+| [Conciliación bancaria y alertas](conciliacion.md) | Job diario banco ↔ ledger, extractos, diferencias, liberación de fondos, alertas |
 | [Configuración](configuracion.md) | Variables de entorno, una por una |
 | [Despliegue, pruebas y CI](despliegue.md) | Docker, Railway, migraciones, seed, dev-jobs, pruebas, CI |
 | [Web: diseño y movimiento](web.md) | Superficies web, proceso de diseño, reglas y presupuesto de las animaciones, cómo verificar un cambio visual |
 | [Documentos legales](legal.md) | Términos, acuerdo de comercio, privacidad, cookies, uso aceptable, LC/FT, divulgación responsable; constancia de aceptación y `security.txt` |
 | [Seguridad](seguridad.md) | Secretos, llaves, sesiones, CSRF, límites de peticiones, puerto interno, operadores, gitleaks |
+| [Doble factor (2FA)](doble-factor.md) | TOTP y códigos de respaldo en el panel del comercio y el interno, sesiones de operador, reinicio seguro |
+| [Gestor de secretos (KMS)](gestor-de-secretos.md) | Cifrado por sobre, AWS KMS o llave local, rotación, llaves y certificados de los bancos |
 | [CHANGELOG técnico](CHANGELOG.md) | Historial de cambios técnicos por PR |
 
 Otros documentos del repo: [`README.md`](../README.md) (visión general y arranque rápido),

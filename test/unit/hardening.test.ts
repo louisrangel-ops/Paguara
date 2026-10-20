@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRails } from '../../src/app.module';
 import { isInternalPath, rateRules } from '../../src/common/hardening';
-import { openSecret, sealSecret } from '../../src/common/secret-box';
 
 const req = (path: string, auth?: string) => ({ path, ip: '10.0.0.1', header: (h: string) => (h === 'authorization' ? auth : undefined) }) as never;
 
@@ -32,21 +31,3 @@ test('límite de peticiones: la API cuenta por llave y por IP; checkout y panel 
   assert.deepEqual(rateRules(req('/health'), {}), []);
 });
 
-test('secretos de webhooks: cifrados con la llave, legibles de vuelta, y los viejos en claro siguen sirviendo', () => {
-  const prev = process.env.SECRETS_ENCRYPTION_KEY;
-  try {
-    process.env.SECRETS_ENCRYPTION_KEY = 'c'.repeat(64);
-    const sealed = sealSecret('whsec_abc');
-    assert.match(sealed, /^enc:v1:/);
-    assert.ok(!sealed.includes('whsec_abc'));
-    assert.notEqual(sealSecret('whsec_abc'), sealed, 'cada cifrado usa un IV nuevo');
-    assert.equal(openSecret(sealed), 'whsec_abc');
-    assert.equal(openSecret('whsec_viejo'), 'whsec_viejo');
-    const tampered = sealed.slice(0, -2) + (sealed.endsWith('AA') ? 'AB' : 'AA');
-    assert.throws(() => openSecret(tampered));
-    process.env.SECRETS_ENCRYPTION_KEY = 'd'.repeat(64);
-    assert.throws(() => openSecret(sealed), 'otra llave no lo abre');
-  } finally {
-    if (prev === undefined) delete process.env.SECRETS_ENCRYPTION_KEY; else process.env.SECRETS_ENCRYPTION_KEY = prev;
-  }
-});

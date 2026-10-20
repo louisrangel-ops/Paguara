@@ -18,7 +18,9 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
 | `dashboard` | Usuarios del panel, sesiones y aceptación de documentos legales | 007, 011 |
 | `webhooks` | Endpoints, eventos (outbox) y entregas | 007 |
-| `platform` | Catálogo de métodos y módulos con su interruptor global | 008, 009 |
+| `platform` | Catálogo de métodos y módulos, operadores y sus sesiones, secretos de los bancos, alertas | 008, 009, 010, 012 |
+| `security` | Doble factor: semillas, códigos de respaldo y auditoría | 012 |
+| `reconciliation` | Extractos del banco, movimientos, corridas, cruces y diferencias | 012 |
 
 ## Migraciones
 
@@ -102,6 +104,16 @@ Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md) y [liqui
 
 Detalle en [legal.md](legal.md).
 
+### 012 · `012_mfa_kms_reconciliation.sql` — Doble factor, secretos de los bancos y conciliación diaria
+- `security.mfa_factors (principal_type 'user'|'operator', principal_id, secret_sealed, confirmed_at, last_used_step)`: semilla TOTP cifrada con el KMS; `confirmed_at` nulo = inscripción a medias.
+- `security.mfa_recovery_codes`: SHA-256 de los códigos de respaldo y `used_at`. `security.mfa_audit`: append-only (`ledger.tg_immutable`).
+- `platform.operator_sessions (token_hash, operator_id, expires_at, revoked_at, ip)`: sesión `ops_` del panel interno.
+- `platform.rail_credentials`: secretos de los bancos versionados; `CHECK (sealed LIKE 'env:v1:%')` impide guardarlos en claro; índice único de la versión vigente por riel y nombre; `expires_at` de los certificados.
+- `reconciliation.statements`, `reconciliation.movements` (único por riel, moneda, fecha valor, referencia y monto), `reconciliation.runs`, `reconciliation.matches` (un cobro y un movimiento se cruzan una vez; append-only) y `reconciliation.discrepancies` (índice único de la diferencia abierta).
+- `platform.alerts`: alertas con `dedupe_key` única mientras están abiertas.
+
+Detalle en [doble-factor.md](doble-factor.md), [gestor-de-secretos.md](gestor-de-secretos.md) y [conciliacion.md](conciliacion.md).
+
 ## Prefijos de identificadores
 
 | Prefijo | Objeto | Generado en |
@@ -112,7 +124,12 @@ Detalle en [legal.md](legal.md).
 | `key_` | Llave API (`sk_test_`/`sk_live_`/`pk_test_`/`pk_live_` + 32 hex) | `merchants.service.ts` |
 | `usr_` | Usuario del panel | `auth.service.ts` |
 | `stb_`, `po_` | Lote y liquidación | `settlements.service.ts` |
-| `op_`, `opk_` | Operador del panel interno y su token (`opk_` + 48 hex) | `operators.service.ts` |
+| `op_`, `opk_`, `ops_` | Operador del panel interno, su token (`opk_` + 48 hex) y su sesión con doble factor | `operators.service.ts` |
+| `mfa_` | Token de un solo uso entre la contraseña y el código del login del comercio (Redis, 5 min) | `auth.service.ts` |
+| `rcred_` | Versión de un secreto de banco | `rail-credentials.service.ts` |
+| `bst_`, `rec_`, `dsc_` | Extracto, corrida de conciliación y diferencia | `reconciliation.service.ts` |
+| `alr_` | Alerta | `alerts.service.ts` |
+| `env:v1:` | Secreto cifrado por sobre con el KMS | `src/secrets/vault.ts` |
 | `we_`, `whsec_`, `evt_` | Endpoint, secreto y evento de webhook | `webhooks.service.ts` |
 | `plink_` | Link de pago | `dashboard.service.ts` |
 

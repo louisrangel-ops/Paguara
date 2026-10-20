@@ -7,7 +7,7 @@ unidades mínimas** (también se aceptan números enteros seguros en la entrada)
 |---|---|---|---|
 | API v1 | `/v1/payment_intents` | Servidor del comercio | `Authorization: Bearer sk_test_…` / `sk_live_…` |
 | Checkout | `/v1/checkout/payment_intents` | Navegador del pagador | `Authorization: Bearer pk_…` + `client_secret` del intent |
-| Interna | `/internal` (solo en `INTERNAL_PORT`) | Workers y cron (token de sistema) y personas del panel interno (token de operador) | `X-Internal-Token: <INTERNAL_API_TOKEN>` o `X-Internal-Token: opk_…` |
+| Interna | `/internal` (solo en `INTERNAL_PORT`) | Workers y cron (token de sistema) y personas del panel interno (token de operador) | `X-Internal-Token: <INTERNAL_API_TOKEN>` o `X-Internal-Token: ops_…` (sesión tras token `opk_` y doble factor) |
 | Dashboard | `/api/dashboard` | Web del comercio | Cookie de sesión `sid` + `X-Requested-With: fetch` — ver [dashboard-api.md](dashboard-api.md) |
 
 ## Llaves API (`src/common/api-key.guard.ts`, `src/merchants/merchants.service.ts`)
@@ -67,6 +67,16 @@ Quién puede: **S** token de sistema (workers, cron), **O** cualquier operador, 
 | Método | Ruta | Cuerpo | Quién | Qué hace |
 |---|---|---|---|---|
 | GET | `/internal/whoami` | — | S, O | `{kind: 'system'}` o `{kind: 'operator', id, name, role}` |
+| POST | `/internal/auth/session`, `/internal/auth/mfa/setup`, `/internal/auth/mfa/confirm`, `/internal/auth/logout` | `{token, code}` | token `opk_` | Entrada con doble factor; devuelven la sesión `ops_` ([doble-factor.md](doble-factor.md#panel-interno-obligatorio)) |
+| POST | `/internal/operators/:id/mfa/reset` | `{reason}` | M (no a sí mismo) | Reinicia el doble factor de un operador y cierra sus sesiones |
+| GET | `/internal/dashboard_users?email=` | — | M | Usuario de un comercio con `mfa_enabled` |
+| POST | `/internal/dashboard_users/:id/mfa/reset` | `{reason}` | M | Reinicia su doble factor y cierra sus sesiones |
+| GET / POST | `/internal/rail_credentials` | `{rail, name, kind, value}` | O / M | Secretos de los bancos cifrados con el KMS ([gestor-de-secretos.md](gestor-de-secretos.md#secretos-de-los-bancos-srcsecretsrail-credentialsservicets)) |
+| POST | `/internal/rail_credentials/:rail/:name/retire` | — | M | Retira la versión vigente |
+| POST | `/internal/reconciliation/statements`, `/runs`, `/daily` | ver [conciliacion.md](conciliacion.md#rutas-internal-ver-apimdapi-interna) | S, O | Importa extractos y concilia |
+| GET | `/internal/reconciliation/runs`, `/runs/:id`, `/discrepancies` | — | O | Corridas y diferencias abiertas |
+| POST | `/internal/reconciliation/discrepancies/:id/resolve` | `{resolution}` | O | Cierra una diferencia con nota |
+| GET / POST | `/internal/alerts`, `/internal/alerts/:id/acknowledge` | — | O | Alertas abiertas; marcar vista |
 | POST | `/internal/operators` | `{name, role: 'master'\|'operator'}` | M (S solo el primer maestro) | Crea a una persona y devuelve su token `opk_…` una sola vez |
 | GET | `/internal/operators` | — | M | Operadores con rol y si están revocados |
 | POST | `/internal/operators/:id/revoke` | — | M | Revoca el token (no a sí mismo) |
@@ -88,7 +98,9 @@ Quién puede: **S** token de sistema (workers, cron), **O** cualquier operador, 
 | POST | `/internal/merchants/:id/capabilities/:key` | `{platform_status?, contract_ref?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?}` | M | Habilitar (un método exige `contract_ref`), bloquear o negociar (`null` vuelve al valor de plataforma) |
 | POST | `/internal/treasury/contributions` | `{currency, amount, reference}` | M | Aporte de capital (idempotente por `reference`) |
 
-El token de sistema se compara en tiempo constante; el de operador se busca por su SHA-256. Token desconocido o revocado: 401. Fuera de rol: 403 `insufficient_role`.
+**O** y **M** entran con la sesión `ops_…` que da `/internal/auth/session` tras el doble factor; el token `opk_…` solo
+responde 401 `operator_session_required`. El token de sistema se compara en tiempo constante; la sesión se busca por su
+SHA-256. Desconocido, vencido o revocado: 401. Fuera de rol: 403 `insufficient_role`.
 La auditoría usa el nombre del operador que trae el token; el campo `actor` del cuerpo ya no se usa.
 La API interna no usa el interceptor de idempotencia: cada operación es idempotente por su propia llave
 (asiento, `batch_code`, `reference`).
@@ -126,14 +138,14 @@ Forma: `{ "error": { "type", "code", "message", ...extra } }` (`ApiExceptionFilt
 
 | HTTP | Códigos |
 |---|---|
-| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid` |
-| 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials` |
-| 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role` |
+| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid`, `mfa_code_required`, `reason_required`, `rail_invalid`, `value_invalid`, `statement_invalid`, `statement_date_invalid`, `date_invalid`, `statement_too_large`, `resolution_required` |
+| 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials`, `mfa_code_invalid`, `mfa_challenge_expired`, `operator_session_required` |
+| 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role`, `mfa_required` |
 | 404 | `resource_missing`, `not_found` (rutas internas en el puerto público) |
-| 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked`, `capability_locked`, `capability_not_requestable`, `no_payment_methods_available` (en `/pay/:slug`), `payout_already_approved`, `already_approved_by_you`, `payout_not_approved`, `name_taken`, `cannot_revoke_self` |
+| 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked`, `capability_locked`, `capability_not_requestable`, `no_payment_methods_available` (en `/pay/:slug`), `payout_already_approved`, `already_approved_by_you`, `payout_not_approved`, `name_taken`, `cannot_revoke_self`, `mfa_already_enabled`, `mfa_enrollment_missing`, `mfa_not_enabled`, `cannot_reset_self` |
 | 422 | `idempotency_key_reused` |
 | 429 | `too_many_attempts`, `too_many_requests`, `rate_limited` (tipo `rate_limit_error`, con `Retry-After`) |
 | 500 | `internal_error`, `rail_unavailable` |
-| 503 | `fx_rate_unavailable`, `unhealthy` |
+| 503 | `fx_rate_unavailable`, `unhealthy`, `kms_unavailable` |
 
 Al agregar un código nuevo, agrégalo a esta tabla y a la documentación pública de la web (`#/docs` en `public/assets/site.js`).

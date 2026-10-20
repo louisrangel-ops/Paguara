@@ -12,19 +12,32 @@ Errores: `{ "error": { "code": "...", "message": "texto en español para mostrar
 | Método | Ruta | Cuerpo | Respuesta |
 |---|---|---|---|
 | POST | /signup | `{name, email, password, business_name, rif, accept_terms: true}` | 201 `Session`; sin `accept_terms: true` → 400 `signup_invalid` (`param: accept_terms`) |
-| POST | /login | `{email, password}` | `Session`; 401 `invalid_credentials`; 429 `too_many_attempts` |
+| POST | /login | `{email, password}` | `Session`, o `{mfa_required: true, mfa_token}` si tiene doble factor; 401 `invalid_credentials`; 429 `too_many_attempts` |
+| POST | /login/mfa | `{mfa_token, code}` | `Session` (+ `used_recovery_code: true` si entró con un código de respaldo); 401 `mfa_challenge_expired` (más de 5 min) o `mfa_code_invalid`; 429 `too_many_attempts` |
 | POST | /logout | — | `{ok:true}` |
 | GET | /me | — | `Session` |
 | PUT | /account | `{business_name}` | `Merchant` |
 | POST | /account/kyc | `{legal_name, representative_name, representative_id, address, phone, bank_name, bank_account}` | `Merchant` |
 
 ```
-Session  = { user: {id, name, email, role: 'owner'|'admin'|'developer'|'viewer'}, merchant: Merchant, livemode: bool, other_mode_url: string|null,
+Session  = { user: {id, name, email, role: 'owner'|'admin'|'developer'|'viewer', mfa_enabled: bool}, merchant: Merchant, livemode: bool, other_mode_url: string|null,
              event_types: string[] }
 Merchant = { id, business_name, rif, status: 'pending_kyc'|'active'|'restricted'|'closed',
              kyc_submitted_at: string|null, created }
 ```
 `password` mínimo 10 caracteres. `rif` formato `J-12345678-9`.
+
+## Doble factor
+| Método | Ruta | Cuerpo | Respuesta |
+|---|---|---|---|
+| GET | /security | — | `{enabled, enabled_at, recovery_codes_left}` |
+| POST | /mfa/setup | — | `{secret, otpauth_url}`; 409 `mfa_already_enabled` |
+| POST | /mfa/confirm | `{code}` | `{recovery_codes: string[10]}` (se ven una vez); 401 `mfa_code_invalid` |
+| POST | /mfa/recovery_codes | `{code}` | `{recovery_codes}` nuevos; los anteriores dejan de servir |
+| POST | /mfa/disable | `{password, code}` | `{enabled: false, …}`; 401 `invalid_credentials` o `mfa_code_invalid` |
+
+`code` = 6 dígitos de la app o un código de respaldo `xxxxx-xxxxx`. Con el factor activo,
+`PUT /settlement_rules/:source` exige `mfa_code` (403 `mfa_required`). Ver [doble-factor.md](doble-factor.md).
 
 ## Inicio
 GET /overview →
