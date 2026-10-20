@@ -368,24 +368,158 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     } catch (e) { fail(slot, e); }
   }
 
-  // ---- Un comercio ------------------------------------------------------------
+  // ---- Comercios ---------------------------------------------------------------
+  $('ml-form').addEventListener('submit', (e) => { e.preventDefault(); loadMerchantList(); });
+  async function loadMerchantList() {
+    const slot = $('merchant-list');
+    if (!can('merchants:read')) return;
+    try {
+      const q = $('ml-q').value.trim(), st = $('ml-status').value;
+      const { data } = await api('GET', '/merchants?q=' + encodeURIComponent(q) + '&status=' + encodeURIComponent(st) + '&limit=100');
+      if (!data.length) { slot.replaceChildren(el('p', { class: 'empty', text: 'No encontramos comercios con esos filtros.' })); return; }
+      slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, ['Comercio','RIF','Estado','KYC','ISO 8583','Alta',''].map((t) => el('th', { scope:'col', text:t })))]),
+        el('tbody', {}, data.map((m) => {
+          const open = el('button', { class:'btn ghost', type:'button', text:'Abrir', onclick:() => {
+            $('m-id').value = m.id; loadMerchant(m.id); $('m-id').scrollIntoView({ behavior:'smooth', block:'center' });
+          }});
+          return el('tr', {}, [
+            el('th', { scope:'row' }, [m.business_name, el('br'), el('code', { text:m.id })]),
+            el('td', { text:m.rif }),
+            el('td', {}, [pill(m.status, m.status === 'active' ? 'ok' : m.status === 'restricted' ? 'bad' : 'warn')]),
+            el('td', {}, [m.kyc_submitted_at ? pill('Enviado','note') : pill('Pendiente','warn')]),
+            el('td', {}, [pill(m.iso8583_profile_status || 'pending', m.iso8583_profile_status === 'provisioned' ? 'ok' : 'warn')]),
+            el('td', { text:when(m.created) }),
+            el('td', { class:'actions' }, [open]),
+          ]);
+        })),
+      ])]));
+    } catch (e) { fail(slot,e); }
+  }
+
   $('m-form').addEventListener('submit', (e) => { e.preventDefault(); loadMerchant($('m-id').value.trim()); });
+  const kv = (label, value) => el('div', { style:'display:grid;gap:2px' }, [el('span', { class:'muted', text:label }), el('code', { text:value == null || value === '' ? '—' : String(value) })]);
+
   async function loadMerchant(id) {
     const slot = $('merchant');
     if (!/^[a-z0-9_]+$/.test(id)) { fail(slot, new Error('El id solo tiene letras minúsculas, números y _')); return; }
     try {
-      const { data } = await api('GET', '/merchants/' + encodeURIComponent(id) + '/capabilities');
-      slot.replaceChildren(
-        el('p', { class: 'muted', text: 'Para permitir un método escribe el número de su contrato. Precio y límites vacíos = los de la plataforma. Los límites van en unidades mínimas de la moneda de cobro (céntimos, o millonésimas de USDT).' }),
+      const [m, caps] = await Promise.all([
+        api('GET', '/merchants/' + encodeURIComponent(id)),
+        api('GET', '/merchants/' + encodeURIComponent(id) + '/capabilities'),
+      ]);
+      const data = caps.data;
+      const header = el('div', { class:'card', style:'padding:16px' }, [
+        el('div', { class:'head' }, [
+          el('div', {}, [el('h2', { text:m.business_name }), el('code', { text:m.id + ' · ' + m.rif })]),
+          pill(m.status, m.status === 'active' ? 'ok' : m.status === 'restricted' ? 'bad' : 'warn'),
+        ]),
+        el('div', { class:'row' }, [
+          kv('KYC', m.kyc_submitted_at ? 'Enviado ' + when(m.kyc_submitted_at) : 'Pendiente'),
+          kv('ISO 8583', m.iso8583_status || 'pending'),
+          kv('Creado', when(m.created)),
+        ]),
+      ]);
+
+      const sections = [header];
+
+      if (can('merchants:status')) {
+        const st = el('select', { 'aria-label':'Estado del comercio' }, [
+          ['pending_kyc','KYC pendiente'],['active','Activo'],['restricted','Restringido'],['closed','Cerrado']
+        ].map(([v,t]) => el('option',{value:v,text:t,selected:m.status===v})));
+        const save = el('button',{class:'btn',type:'button',text:'Cambiar estado'});
+        save.addEventListener('click', async () => {
+          if (!confirm('¿Cambiar ' + m.business_name + ' a ' + st.value + '?')) return;
+          save.disabled = true;
+          try { await api('POST','/merchants/'+encodeURIComponent(id)+'/status',{status:st.value}); say('Estado del comercio actualizado'); loadMerchant(id); loadMerchantList(); }
+          catch(e){ save.disabled=false; alert(e.message); }
+        });
+        sections.push(el('div',{class:'row'},[el('div',{class:'field'},[el('label',{text:'Estado de la cuenta'}),st]),save]));
+      }
+
+      const kyc = m.kyc_data || {};
+      sections.push(el('section',{style:'display:grid;gap:12px'},[
+        el('h2',{text:'KYC y perfil comercial'}),
+        m.kyc_submitted_at ? el('div',{class:'row'},[
+          kv('Razón social',kyc.legal_name),kv('Representante',kyc.representative_name),kv('Cédula',kyc.representative_id),
+          kv('Teléfono',kyc.phone),kv('Soporte',kyc.support_email),kv('Actividad',kyc.business_activity),
+          kv('E-commerce',kyc.ecommerce_url),kv('Descriptor',kyc.statement_descriptor),
+          kv('Dirección',kyc.address),kv('Banco',kyc.bank_name),kv('Cuenta',kyc.bank_account),
+        ]) : el('p',{class:'empty',text:'El comercio todavía no envió su onboarding/KYC.'})
+      ]));
+
+      sections.push(isoProfileEditor(id,m));
+      if (can('merchants:api_keys')) sections.push(apiKeyAdmin(id));
+      sections.push(el('section',{style:'display:grid;gap:12px'},[
+        el('h2',{text:'Métodos, módulos, precios y límites'}),
+        el('p', { class: 'muted', text: can('capabilities:manage') ? 'Para permitir un método escribe el contrato firmado. Precio y límites vacíos usan los valores de plataforma.' : 'Vista de solo lectura según tu rol.' }),
         el('div', { class: 'table-wrap' }, [el('table', {}, [
-          el('thead', {}, [el('tr', {}, ['Capacidad', 'Estado', 'Plataforma', 'Contrato', 'Comisión (bps)', 'Fijo (centavos USD)', 'Mínimo', 'Máximo', ''].map((t) => el('th', { scope: 'col', text: t })))]),
-          el('tbody', {}, data.map((c) => row(id, c))),
+          el('thead', {}, [el('tr', {}, ['Capacidad','Estado','Plataforma','Contrato','Comisión (bps)','Fijo USD','Mínimo','Máximo',''].map((t)=>el('th',{scope:'col',text:t})))]),
+          el('tbody', {}, data.map((cap) => row(id, cap))),
         ])]),
-      );
+      ]));
+      slot.replaceChildren(...sections);
     } catch (e) { fail(slot, e); }
   }
+
+  function isoProfileEditor(id, m) {
+    const box = el('section',{style:'display:grid;gap:12px'},[el('h2',{text:'Perfil ISO 8583 del adquirente'})]);
+    if (!can('iso8583:manage')) {
+      box.append(el('div',{class:'row'},[
+        kv('Estado',m.iso8583_status),kv('MCC',m.mcc),kv('MID',m.acquirer_merchant_id),kv('TID',m.terminal_id),
+        kv('Acquirer ID',m.acquiring_institution_id),kv('DE49',m.currency_numeric),kv('DE22',m.pos_entry_mode),kv('DE25',m.pos_condition_code)
+      ])); return box;
+    }
+    const f=(label,value,placeholder)=>{const input=el('input',{value:value||'',placeholder:placeholder||'',spellcheck:'false'});return {input,node:el('div',{class:'field'},[el('label',{text:label}),input])};};
+    const mcc=f('MCC / DE18',m.mcc,'5812'), mid=f('Merchant ID / DE42',m.acquirer_merchant_id,'MID…'), tid=f('Terminal ID / DE41',m.terminal_id,'ECOM0001');
+    const acq=f('Acquirer ID / DE32',m.acquiring_institution_id,'123456'), cur=f('Moneda / DE49',m.currency_numeric||'928','928');
+    const entry=f('POS Entry / DE22',m.pos_entry_mode||'090','090'), cond=f('POS Condition / DE25',m.pos_condition_code||'59','59');
+    const status=el('select',{},['pending','provisioned','suspended'].map(v=>el('option',{value:v,text:v,selected:(m.iso8583_status||'pending')===v})));
+    const save=el('button',{class:'btn',type:'button',text:'Guardar perfil ISO 8583'});
+    save.addEventListener('click',async()=>{
+      save.disabled=true;
+      try {
+        await api('POST','/merchants/'+encodeURIComponent(id)+'/iso8583_profile',{
+          status:status.value,mcc:mcc.input.value.trim(),acquirer_merchant_id:mid.input.value.trim(),terminal_id:tid.input.value.trim(),
+          acquiring_institution_id:acq.input.value.trim(),currency_numeric:cur.input.value.trim(),
+          pos_entry_mode:entry.input.value.trim(),pos_condition_code:cond.input.value.trim()
+        });
+        say('Perfil ISO 8583 actualizado'); loadMerchant(id); loadMerchantList();
+      } catch(e){save.disabled=false;alert(e.message);}
+    });
+    box.append(el('p',{class:'muted',text:'Estos identificadores los asigna Paguara/el adquirente; el comercio no puede modificarlos.'}),
+      el('div',{class:'row'},[el('div',{class:'field'},[el('label',{text:'Estado'}),status]),mcc.node,mid.node,tid.node,acq.node,cur.node,entry.node,cond.node,save]));
+    return box;
+  }
+
+  function apiKeyAdmin(id) {
+    const out=el('div');
+    const kind=el('select',{},[el('option',{value:'publishable',text:'Publicable'}),el('option',{value:'secret',text:'Secreta'})]);
+    const live=el('input',{type:'checkbox',class:'switch','aria-label':'Llave de producción'});
+    const btn=el('button',{class:'btn',type:'button',text:'Crear llave'});
+    btn.addEventListener('click',async()=>{
+      if(live.checked && !confirm('¿Crear una llave LIVE para este comercio?')) return;
+      btn.disabled=true;
+      try{
+        const k=await api('POST','/merchants/'+encodeURIComponent(id)+'/api_keys',{kind:kind.value,livemode:live.checked});
+        out.replaceChildren(el('div',{class:'banner ok'},[el('b',{text:'Llave creada (se muestra una vez): '}),el('code',{text:k.key})]));
+      }catch(e){alert(e.message);} finally{btn.disabled=false;}
+    });
+    return el('section',{style:'display:grid;gap:12px'},[
+      el('h2',{text:'Llaves API'}),el('p',{class:'muted',text:'Solo para operaciones controladas. Las llaves secretas se muestran una vez.'}),
+      el('div',{class:'row'},[kind,el('label',{class:'check'},[live,el('span',{text:'Producción'})]),btn]),out
+    ]);
+  }
+
   function row(id, c) {
     const [label, tone] = STATE[c.state] || [c.state, ''];
+    const editable = can('capabilities:manage');
+    if (!editable) return el('tr', {}, [
+      el('th',{scope:'row'},[c.name,el('br'),el('code',{text:c.key})]),el('td',{},[pill(label,tone)]),
+      el('td',{text:c.platform_status || '—'}),el('td',{text:c.contract_ref || '—'}),
+      el('td',{class:'num',text:String(c.fee_bps ?? '—')}),el('td',{class:'num',text:String(c.fixed_usd ?? '—')}),
+      el('td',{class:'num',text:String(c.min_amount ?? '—')}),el('td',{class:'num',text:String(c.max_amount ?? '—')}),el('td')
+    ]);
     const status = el('select', { 'aria-label': 'Estado de plataforma de ' + c.name }, [
       ['', 'Sin cambio'], ['allowed', 'Permitir'], ['pending_review', 'En revisión'], ['blocked', 'Bloquear'],
     ].map(([v, t]) => el('option', { value: v, text: t })));
@@ -395,6 +529,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     const fixed = num(c.custom_pricing ? c.fixed_usd : null, 'Fijo');
     const min = num(c.min_amount, 'Mínimo'), max = num(c.max_amount, 'Máximo');
     const contract = isMethod ? contractInput('Contrato de ' + c.name) : null;
+    if (contract && c.contract_ref) contract.value = c.contract_ref;
     const save = el('button', { class: 'btn', type: 'button', text: 'Guardar', 'aria-label': 'Guardar ' + c.name });
     save.addEventListener('click', async () => {
       const body = {};
@@ -411,8 +546,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     });
     return el('tr', {}, [
       el('th', { scope: 'row' }, [c.name, el('br'), el('code', { text: c.key })]),
-      el('td', {}, [pill(label, tone)]),
-      el('td', {}, [status]),
+      el('td', {}, [pill(label, tone)]), el('td', {}, [status]),
       el('td', {}, [contract || el('span', { class: 'muted', text: 'No aplica' })]),
       ...(isMethod ? [fee, fixed, min, max].map((i) => el('td', {}, [i])) : [el('td', { colspan: '4', class: 'muted', text: 'Sin precio ni límites' })]),
       el('td', { class: 'actions' }, [save]),
