@@ -22,6 +22,20 @@ export class FxService {
     if (source === 'BCV' && !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate ?? '')) {
       throw new Error('Las tasas BCV requieren effectiveDate YYYY-MM-DD');
     }
+    if (source === 'BCV') {
+      const existing = await this.pool.query<{ id: string; rate: string }>(
+        `SELECT id, rate::text AS rate FROM fx.rates
+          WHERE base_currency = $1 AND quote_currency = $2 AND source = 'BCV' AND effective_date = $3::date
+          LIMIT 1`,
+        [base, quote, effectiveDate],
+      );
+      if (existing.rows[0]) {
+        if (normalizeRate(existing.rows[0].rate) !== normalizeRate(rate)) {
+          throw new Error(`Ya existe una tasa BCV distinta para ${base}/${quote} en ${effectiveDate}`);
+        }
+        return existing.rows[0].id;
+      }
+    }
     const res = await this.pool.query<{ id: string }>(
       `INSERT INTO fx.rates (base_currency, quote_currency, rate, source, observed_at, effective_date)
        VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING id`,
