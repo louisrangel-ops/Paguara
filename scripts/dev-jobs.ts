@@ -40,7 +40,10 @@ async function loadRates() {
     const [pair, source, rate] = spec.split(':');
     const [base, quote] = (pair ?? '').split('/');
     if (!base || !quote || !source || !rate) throw new Error(`DEV_FX_RATES mal formado: "${spec}"`);
-    await internal('fx/rates', { base, quote, rate, source });
+    const effective_date = source === 'BCV'
+      ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+      : undefined;
+    await internal('fx/rates', { base, quote, rate, source, effective_date });
   }
   console.log(`[dev-jobs] tasas cargadas: ${RATES}`);
 }
