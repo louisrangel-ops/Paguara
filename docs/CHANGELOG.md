@@ -9,12 +9,16 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
-- [Docs] Documentos legales en borrador como páginas del sitio (`#/legal/...`): términos, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable; textos en `public/assets/legal.js`. Ver [legal.md](legal.md).
-- [Esquema] Migración 011: `dashboard.legal_acceptances`, append-only, constancia de la versión aceptada con IP y navegador.
-- [API] `POST /api/dashboard/signup` exige `accept_terms: true` (400 `signup_invalid`, `param: accept_terms`) y registra la aceptación en la misma transacción.
-- [Web] Casilla de aceptación en el registro, enlaces legales en el pie del sitio y del checkout, aviso de cookies informativo (`localStorage` `paguara_cookies`).
-- [Seguridad] `GET /.well-known/security.txt` (RFC 9116) si `SECURITY_CONTACT` está definida.
-- [Config] `SECURITY_CONTACT`.
+- [Rieles] Base ISO 8583 en `src/payment-intents/rails/iso8583/`: codec ASCII de perfil de prueba y simulador emisor en memoria (autorización, rechazo, timeout, reversos, conciliación). No es un riel registrado ni toca `LIVEMODE` (#13).
+- [CI] Workflow `iso8583-tests.yml`: typecheck y pruebas unitarias en PRs que tocan el codec o el simulador (#13).
+- [Docs] `iso8583-acquirer-integration.md` (requisitos del adquirente y próximos pasos, #13). La documentación de #13 en métodos de pago, CI, pruebas e índice; el riel sandbox ya no se describe como activo en `LIVEMODE=true` y webhooks aclara que el secreto se guarda cifrado cuando hay `SECRETS_ENCRYPTION_KEY` (#11); entradas de #12 con su número (#15).
+
+- [Docs] Documentos legales en borrador como páginas del sitio (`#/legal/...`): términos, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable; textos en `public/assets/legal.js`. Ver [legal.md](legal.md) (#12).
+- [Esquema] Migración 011: `dashboard.legal_acceptances`, append-only, constancia de la versión aceptada con IP y navegador (#12).
+- [API] `POST /api/dashboard/signup` exige `accept_terms: true` (400 `signup_invalid`, `param: accept_terms`) y registra la aceptación en la misma transacción (#12).
+- [Web] Casilla de aceptación en el registro, enlaces legales en el pie del sitio y del checkout, aviso de cookies informativo (`localStorage` `paguara_cookies`) (#12).
+- [Seguridad] `GET /.well-known/security.txt` (RFC 9116) si `SECURITY_CONTACT` está definida (#12).
+- [Config] `SECURITY_CONTACT` (#12).
 
 - [Esquema] Migración 010: liquidación solo en VES (CHECK en reglas e instrucciones), `platform.operators`, `settlements.payouts.status/approvals_required`, `settlements.payout_approvals`, triggers `P0020`, módulos de liquidación en divisas retirados (`retired_at`) y métodos por contrato (`contract_ref`, sin `default_for_new`) (#11).
 - [Liquidaciones] Por ley se paga a los comercios solo en bolívares: lo cobrado en USD o USDT se convierte a VES en el corte; reglas con otra moneda o distintas del 100 % → 400 `settlement_currency_invalid`/`settlement_rules_invalid` (#11).
