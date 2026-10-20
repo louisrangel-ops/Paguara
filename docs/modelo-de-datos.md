@@ -18,7 +18,7 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
 | `dashboard` | Usuarios del panel, sesiones y aceptación de documentos legales | 007, 011 |
 | `webhooks` | Endpoints, eventos (outbox) y entregas | 007 |
-| `platform` | Catálogo de métodos y módulos con su interruptor global | 008, 009 |
+| `platform` | Catálogo de métodos/módulos, operadores internos y auditoría RBAC | 008, 009, 010, 013 |
 
 ## Migraciones
 
