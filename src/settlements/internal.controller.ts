@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, HttpCode, Inject, Injectable, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, HttpCode, Inject, Injectable, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { ApiError } from '../common/errors';
@@ -9,8 +9,8 @@ import { PaymentIntentsService } from '../payment-intents/payment-intents.servic
 import { RailResult } from '../payment-intents/rails/rail-adapter';
 import { PayoutLeg } from '../ledger/entry-templates';
 import { MerchantsService, MerchantStatus } from '../merchants/merchants.service';
-import { Operator, SettlementsService } from './settlements.service';
-import { OperatorsService } from './operators.service';
+import { Operator, OperatorRole, SettlementsService } from './settlements.service';
+import { hasOperatorPermission, operatorPermissions, OperatorPermission, OperatorsService } from './operators.service';
 import { Pool } from 'pg';
 import { PG_POOL, withTransaction } from '../database/database';
 import { LedgerService } from '../ledger/ledger.service';
@@ -43,18 +43,21 @@ export class InternalTokenGuard implements CanActivate {
   }
 }
 
-/** Solo un maestro: KYC, métodos por contrato, precios, interruptores, llaves y cuentas de liquidación. */
-function master(req: InternalRequest): Operator {
+function person(req: InternalRequest): Operator {
   const a = req.internalActor;
-  if (a.kind !== 'operator' || a.role !== 'master') throw new ApiError(403, 'insufficient_role', 'Esta acción la hace solo el maestro de Paguara');
+  if (a.kind !== 'operator') throw new ApiError(403, 'insufficient_role', 'Esta acción requiere un operador humano');
   return a;
 }
 
-/** Una persona (no el token de los workers). */
-function person(req: InternalRequest): Operator {
-  const a = req.internalActor;
-  if (a.kind !== 'operator') throw new ApiError(403, 'insufficient_role', 'Esta acción la hace una persona con su token de operador');
-  return a;
+function permitted(req: InternalRequest, permission: OperatorPermission): Operator {
+  const op = person(req);
+  if (!hasOperatorPermission(op, permission)) throw new ApiError(403, 'insufficient_role', `Tu rol no tiene el permiso ${permission}`);
+  return op;
+}
+
+function workerOr(req: InternalRequest, permission: OperatorPermission): Operator | null {
+  if (req.internalActor.kind === 'system') return null;
+  return permitted(req, permission);
 }
 
 const actorName = (req: InternalRequest) => (req.internalActor.kind === 'operator' ? `platform:${req.internalActor.name}` : 'platform:system');
@@ -82,12 +85,12 @@ export class InternalController {
   @Get('whoami')
   whoami(@Req() req: InternalRequest) {
     const a = req.internalActor;
-    return a.kind === 'operator' ? { kind: a.kind, id: a.id, name: a.name, role: a.role } : { kind: 'system' };
+    return a.kind === 'operator' ? { kind: a.kind, id: a.id, name: a.name, role: a.role, permissions: operatorPermissions(a.role) } : { kind: 'system' };
   }
 
   @Get('operators')
   async listOperators(@Req() req: InternalRequest) {
-    master(req);
+    permitted(req, 'operators:read');
     return { object: 'list', data: await this.operators.list() };
   }
 
@@ -97,16 +100,22 @@ export class InternalController {
     return this.operators.create(b, req.internalActor.kind === 'system' ? 'system' : req.internalActor);
   }
 
+  @Post('operators/:id/role')
+  @HttpCode(200)
+  changeOperatorRole(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { role?: OperatorRole }) {
+    return this.operators.changeRole(id, b.role as OperatorRole, permitted(req, 'operators:manage'));
+  }
+
   @Post('operators/:id/revoke')
   @HttpCode(200)
   revokeOperator(@Req() req: InternalRequest, @Param('id') id: string) {
-    return this.operators.revoke(id, master(req));
+    return this.operators.revoke(id, permitted(req, 'operators:manage'));
   }
 
   /** Liquidaciones esperando aprobación. */
   @Get('payouts/pending')
   async pendingPayouts(@Req() req: InternalRequest) {
-    person(req);
+    permitted(req, 'payouts:read');
     return { object: 'list', data: await this.settlements.pendingApprovals() };
   }
 
@@ -114,7 +123,7 @@ export class InternalController {
   @Post('payouts/:id/approve')
   @HttpCode(200)
   approvePayout(@Req() req: InternalRequest, @Param('id') id: string) {
-    return this.settlements.approvePayout(id, person(req));
+    return this.settlements.approvePayout(id, permitted(req, 'payouts:approve'));
   }
 
   /**
@@ -123,7 +132,7 @@ export class InternalController {
    */
   @Post('treasury/contributions')
   async contribute(@Req() req: InternalRequest, @Body() b: { currency: string; amount: string; reference: string }) {
-    master(req);
+    permitted(req, 'treasury:contribute');
     const c = currency(b.currency);
     if (!/^\d{1,20}$/.test(b.amount ?? '') || BigInt(b.amount) <= 0n) throw new ApiError(400, 'amount_invalid', 'amount debe ser un entero positivo en unidades mínimas');
     if (!b.reference) throw new ApiError(400, 'reference_required', 'Falta reference (comprobante del depósito)');
@@ -140,14 +149,20 @@ export class InternalController {
 
   @Post('merchants')
   async createMerchant(@Req() req: InternalRequest, @Body() b: { business_name: string; rif: string; webhook_url?: string }) {
-    master(req);
+    permitted(req, 'merchants:manage');
     return this.merchants.create({ businessName: b.business_name, rif: b.rif, webhookUrl: b.webhook_url });
+  }
+
+  @Get('merchants')
+  async listMerchants(@Req() req: InternalRequest, @Query('q') q = '', @Query('status') status = '', @Query('limit') limit = '50') {
+    permitted(req, 'merchants:read');
+    return { object: 'list', data: await this.merchants.listForAdmin(q, status, Number(limit)) };
   }
 
   /** Detalle completo para cumplimiento: KYC + perfil ISO 8583 provisionado. */
   @Get('merchants/:id')
   async merchantForReview(@Req() req: InternalRequest, @Param('id') id: string) {
-    person(req);
+    permitted(req, 'merchants:read');
     return this.merchants.getForReview(id);
   }
 
@@ -155,7 +170,7 @@ export class InternalController {
   @Post('merchants/:id/iso8583_profile')
   @HttpCode(200)
   setIso8583Profile(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: Record<string, unknown>) {
-    master(req);
+    permitted(req, 'iso8583:manage');
     return this.merchants.setIso8583Profile(id, b);
   }
 
@@ -163,7 +178,7 @@ export class InternalController {
   @Post('merchants/:id/status')
   @HttpCode(200)
   async setMerchantStatus(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { status: MerchantStatus }) {
-    master(req);
+    permitted(req, 'merchants:status');
     await this.merchants.setStatus(id, b.status);
     return { id, status: b.status };
   }
@@ -171,7 +186,7 @@ export class InternalController {
   /** La llave en claro se devuelve solo aquí; después solo existe su hash. */
   @Post('merchants/:id/api_keys')
   async createApiKey(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { kind: 'secret' | 'publishable'; livemode: boolean }) {
-    master(req);
+    permitted(req, 'merchants:api_keys');
     return this.merchants.createApiKey(id, b.kind, b.livemode === true);
   }
 
@@ -179,7 +194,7 @@ export class InternalController {
   @HttpCode(200)
   async setRules(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { source_currency: string;
     rules: Array<{ target_currency: string; bps: number; destination: Record<string, unknown> }> }) {
-    master(req);
+    permitted(req, 'settlement:manage');
     await this.merchants.setSettlementRules(id, currency(b.source_currency),
       b.rules.map((r) => ({ targetCurrency: currency(r.target_currency), bps: r.bps, destination: r.destination })));
     return { ok: true };
@@ -187,14 +202,14 @@ export class InternalController {
 
   @Get('capabilities')
   async globalCapabilities(@Req() req: InternalRequest) {
-    person(req);
+    permitted(req, 'capabilities:read');
     return { object: 'list', data: await this.capabilities.listGlobal() };
   }
 
   /** Solicitudes de los comercios esperando aprobación (bandeja del panel interno). */
   @Get('capability_requests')
   async capabilityRequests(@Req() req: InternalRequest) {
-    person(req);
+    permitted(req, 'capabilities:read');
     return { object: 'list', data: await this.capabilities.pendingRequests() };
   }
 
@@ -202,13 +217,13 @@ export class InternalController {
   @Post('capabilities/:key')
   @HttpCode(200)
   setGlobalCapability(@Req() req: InternalRequest, @Param('key') key: string, @Body() b: { global_enabled?: boolean; default_for_new?: boolean }) {
-    master(req);
+    permitted(req, 'platform:manage');
     return this.capabilities.platformSetGlobal(key, b, actorName(req));
   }
 
   @Get('merchants/:id/capabilities')
   async merchantCapabilities(@Req() req: InternalRequest, @Param('id') id: string) {
-    person(req);
+    permitted(req, 'capabilities:read');
     await this.merchants.get(id);
     return { object: 'list', data: await this.capabilities.list(id) };
   }
@@ -217,18 +232,20 @@ export class InternalController {
   @Post('merchants/:id/capabilities/:key')
   @HttpCode(200)
   setMerchantCapability(@Req() req: InternalRequest, @Param('id') id: string, @Param('key') key: string, @Body() b: PlatformMerchantPatch) {
-    master(req);
+    permitted(req, 'capabilities:manage');
     return this.capabilities.platformSetForMerchant(id, key, b, actorName(req));
   }
 
   @Post('payment_intents/expire')
   @HttpCode(200)
-  async expire() {
+  async expire(@Req() req: InternalRequest) {
+    workerOr(req, 'workers:run');
     return { canceled: await this.payments.expireStale() };
   }
 
   @Post('fx/rates')
-  async recordRate(@Body() b: { base: string; quote: string; rate: string; source: string; observed_at?: string }) {
+  async recordRate(@Req() req: InternalRequest, @Body() b: { base: string; quote: string; rate: string; source: string; observed_at?: string }) {
+    workerOr(req, 'workers:run');
     const id = await this.fx.recordRate(currency(b.base), currency(b.quote), b.rate, b.source, b.observed_at ? new Date(b.observed_at) : undefined);
     return { id };
   }
@@ -236,18 +253,21 @@ export class InternalController {
   /** Resultado de un riel: webhook del banco, match de Pago Móvil P2P, confirmaciones on-chain. */
   @Post('payment_intents/:id/rail_result')
   @HttpCode(200)
-  async railResult(@Param('id') id: string, @Body() b: { source: string; result: RailResult }) {
+  async railResult(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { source: string; result: RailResult }) {
+    workerOr(req, 'workers:run');
     return toApi(await this.payments.applyRailResult(id, b.result, `worker:${b.source}`));
   }
 
   @Post('rail_batches')
-  async railFunds(@Body() b: { batch_id: string; rail: string; currency: string; payment_intent_ids: string[] }) {
+  async railFunds(@Req() req: InternalRequest, @Body() b: { batch_id: string; rail: string; currency: string; payment_intent_ids: string[] }) {
+    workerOr(req, 'workers:run');
     return this.settlements.recordRailFunds(b.batch_id, b.rail, currency(b.currency), b.payment_intent_ids);
   }
 
   /** Corte de lote de liquidación (lo dispara un cron por moneda y hora de corte). */
   @Post('settlement_batches')
-  async cutoff(@Body() b: { batch_code: string; source_currency: string; min_amount?: string; spread_bps?: number }) {
+  async cutoff(@Req() req: InternalRequest, @Body() b: { batch_code: string; source_currency: string; min_amount?: string; spread_bps?: number }) {
+    workerOr(req, 'workers:run');
     const r = await this.settlements.runCutoff(b.batch_code, {
       sourceCurrency: currency(b.source_currency),
       minAmount: b.min_amount ? BigInt(b.min_amount) : undefined,
