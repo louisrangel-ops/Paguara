@@ -173,6 +173,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .btn .spinner { border-color: currentColor; border-top-color: transparent; }
 .btn.ghost { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
 .btn.ghost:hover:not([disabled]) { background: var(--accent-soft); }
+a.btn { text-decoration: none; box-sizing: border-box; }
+.back-link { display: inline-block; margin-top: 16px; color: var(--accent); }
 .banner { border-radius: var(--radius); padding: 14px 16px; font-size: 15px; display: grid; gap: 2px; }
 .banner.bad { background: var(--bad-soft); color: var(--bad); }
 .banner.info { background: var(--accent-soft); color: var(--ink); }
@@ -787,7 +789,35 @@ input::placeholder { color: var(--muted); opacity: 1; }
       el('h1', { id: 'pay-h', tabindex: '-1', text: 'Pago confirmado' }),
       el('p', { text: 'Le avisamos a ' + (pi.merchant ? pi.merchant.name : 'el comercio') + '. Guarda esta referencia por si la necesitas.' }),
       el('dl', { class: 'receipt' }, rows.map(([k, v]) => el('div', {}, [el('dt', { text: k }), el('dd', { text: v, translate: k === 'Referencia' ? 'no' : false })]))),
+      ...backToStore(),
     ])];
+  }
+  // Tiendas en línea: el comercio manda return_url al crear el pago y el pagador vuelve a su pedido.
+  // La tienda no debe confiar en redirect_status: consulta el pago con su llave secreta.
+  function returnHref(status) {
+    const pi = state.pi;
+    if (!pi || !pi.return_url) return null;
+    let u;
+    try { u = new URL(pi.return_url); } catch (e) { return null; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    u.searchParams.set('payment_intent', pi.id);
+    u.searchParams.set('redirect_status', status);
+    return u.toString();
+  }
+  let returnTimer = null;
+  function backToStore() {
+    const href = returnHref('succeeded');
+    if (!href) return [];
+    if (!returnTimer) returnTimer = setTimeout(() => location.assign(href), 5000);
+    const name = state.pi.merchant ? state.pi.merchant.name : 'la tienda';
+    return [
+      el('p', { text: 'En unos segundos te llevamos de vuelta a ' + name + '.' }),
+      el('a', { class: 'btn', href, text: 'Volver a ' + name }),
+    ];
+  }
+  function leaveLink(text) {
+    const href = returnHref('canceled');
+    return href ? el('a', { class: 'back-link', href, text }) : '';
   }
   function svgCheck() {
     const ns = 'http://www.w3.org/2000/svg';
@@ -849,7 +879,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
     }
     if (screen === 'done') { pay.append(...success()); stopPolling(); return; }
     if (screen === 'canceled') {
-      pay.append(el('h1', { id: 'pay-h', tabindex: '-1', text: 'Este pago ya no está disponible' }), el('p', { text: 'El enlace venció o el comercio lo canceló. Pídele uno nuevo.' }));
+      pay.append(el('h1', { id: 'pay-h', tabindex: '-1', text: 'Este pago ya no está disponible' }), el('p', { text: 'El enlace venció o el comercio lo canceló. Pídele uno nuevo.' }), leaveLink('Volver a la tienda'));
       return;
     }
     if (screen === 'action') {
@@ -877,7 +907,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
       if (WIDE.matches) { $('order').after(ticket); pay.append(methodForm(selected)); } else pay.append(ticket, methodForm(selected));
       ticket.hidden = !ticket.dataset.show;
     }
-    pay.append(demoNote() || '');
+    pay.append(leaveLink('Volver a la tienda sin pagar'), demoNote() || '');
   }
   const WIDE = matchMedia('(min-width: 960px)');
   WIDE.addEventListener('change', () => { if (state.pi) render(); });

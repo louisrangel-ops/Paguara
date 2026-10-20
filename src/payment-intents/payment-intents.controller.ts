@@ -5,7 +5,7 @@ import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { MerchantsService } from '../merchants/merchants.service';
 import { isCurrency } from '../common/money';
 import { toApi, toCheckoutApi } from './payment-intent.repository';
-import { PaymentIntentsService } from './payment-intents.service';
+import { parseReturnUrl, PaymentIntentsService } from './payment-intents.service';
 import { isPaymentMethodType, PaymentMethodType } from './payment-methods';
 import { methodView, parseMethodList } from '../capabilities/capability-state';
 import { CapabilitiesService } from '../capabilities/capabilities.service';
@@ -32,13 +32,14 @@ export class PaymentIntentsController {
     @Req() req: MerchantRequest,
     @Headers('idempotency-key') idempotencyKey: string,
     @Body() body: { amount: unknown; currency: string; metadata?: Record<string, unknown>; customer?: Record<string, unknown>; expires_in?: number;
-                    payment_method_types?: unknown },
+                    payment_method_types?: unknown; return_url?: unknown },
   ) {
     if (!isCurrency(body.currency)) throw new ApiError(400, 'currency_invalid', `Moneda no soportada: ${body.currency}`);
     return toApi(await this.service.create(req.merchantId, {
       amount: parseAmount(body.amount), currency: body.currency, metadata: body.metadata, customer: body.customer,
       expiresInSeconds: body.expires_in, idempotencyKey, livemode: req.livemode,
       paymentMethodTypes: parseMethodList(body.payment_method_types),
+      returnUrl: parseReturnUrl(body.return_url, req.livemode),
     }));
   }
 

@@ -24,7 +24,7 @@ unidades mínimas** (también se aceptan números enteros seguros en la entrada)
 
 | Método | Ruta | Cuerpo | Respuesta |
 |---|---|---|---|
-| POST | `/v1/payment_intents` | `{amount, currency, customer?, metadata?, expires_in?, payment_method_types?}` | `PaymentIntent` (incluye `client_secret`) |
+| POST | `/v1/payment_intents` | `{amount, currency, customer?, metadata?, expires_in?, payment_method_types?, return_url?}` | `PaymentIntent` (incluye `client_secret`) |
 | GET | `/v1/payment_intents/:id` | — | `PaymentIntent` |
 | POST | `/v1/payment_intents/:id/attach` | `{payment_method_type, fx_source?}` | `PaymentIntent` |
 | POST | `/v1/payment_intents/:id/confirm` | `{payment_method_details?}` | `PaymentIntent` |
@@ -36,12 +36,15 @@ unidades mínimas** (también se aceptan números enteros seguros en la entrada)
 `Capability` está descrito en [dashboard-api.md](dashboard-api.md#métodos-de-pago-y-módulos).
 
 `currency`: `VES`, `USD`, `EUR`, `USDT`. `expires_in` en segundos (60 a 2.592.000). Un intent de otro comercio responde 404.
+`return_url` (opcional, `parseReturnUrl` en `src/payment-intents/payment-intents.service.ts`): a dónde vuelve el pagador desde el checkout.
+URL absoluta `https://` (también `http://` con llaves de prueba, para tiendas locales), sin usuario ni clave, de hasta 2048
+caracteres; si no, 400 `return_url_invalid`. No cambia con una `Idempotency-Key` repetida. Uso: [integraciones](integraciones/README.md).
 
 ```
 PaymentIntent = { id, object: 'payment_intent', status, amount, currency, payment_method_type, payment_method_types,
   charge: {amount, currency, fee, tax, net, igtf} | null,
   fx: {quote_id, rate, source, expires_at, frozen} | null,
-  next_action, last_payment_error, cancellation_reason, metadata, customer,
+  next_action, last_payment_error, cancellation_reason, metadata, customer, return_url,
   client_secret, livemode, expires_at, created, version }
 ```
 
@@ -54,11 +57,14 @@ PaymentIntent = { id, object: 'payment_intent', status, amount, currency, paymen
 | POST | `/v1/checkout/payment_intents/:id/confirm` | `{client_secret, payment_method_details}` |
 
 El `client_secret` se compara en tiempo constante; si no coincide responde 404 sin revelar nada. La vista del checkout
-(`toCheckoutApi`) no incluye `metadata` (salvo `description`), `customer`, comisión ni neto, y no permite cancelar ni elegir `fx_source`.
+(`toCheckoutApi`) no incluye `metadata` (salvo `description`), `customer`, comisión ni neto, y no permite cancelar ni elegir `fx_source`. Sí incluye `return_url`.
 El GET agrega `merchant: {name, rif}` y `payment_methods`: los métodos que el pagador puede elegir en ese pago
 (activos en el comercio y dentro de `payment_method_types`), cada uno con `{type, name, currency, fee_bps, fixed_usd, tax_bps, igtf_bps, quote_ttl_seconds}`.
 
-La página `GET /checkout?pi=<id>&cs=<client_secret>&pk=<pk_…>` (`public/checkout.html`) usa esta API.
+La página `GET /checkout?pi=<id>&cs=<client_secret>&pk=<pk_…>` (`public/checkout.html`) usa esta API. Si el pago trae
+`return_url`, la página muestra “Volver a la tienda sin pagar” mientras no se paga y, al confirmarse el pago, un botón
+para volver que se activa solo a los 5 s. Agrega a la URL `payment_intent=<id>` y `redirect_status=succeeded|canceled`;
+la tienda no debe confiar en ese estado y tiene que consultar el pago con su llave secreta.
 
 ## API interna (`src/settlements/internal.controller.ts`)
 
@@ -131,7 +137,7 @@ Forma: `{ "error": { "type", "code", "message", ...extra } }` (`ApiExceptionFilt
 
 | HTTP | Códigos |
 |---|---|
-| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid` |
+| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid`, `return_url_invalid` |
 | 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials` |
 | 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role` |
 | 404 | `resource_missing`, `not_found` (rutas internas en el puerto público) |

@@ -40,7 +40,7 @@ No hay estados `failed`, `refunded` ni `disputed`: un rechazo vuelve a `requires
 **Crear** (`create`): valida monto > 0, moneda soportada y `expires_in` entre 60 s y 30 días (24 h por defecto).
 Acepta `payment_method_types` (lista de métodos permitidos en ese pago): cada uno debe estar `active` en el comercio
 (400 `payment_method_not_allowed`); sin lista, el comercio debe tener al menos un método activo (400 `no_payment_methods_available`).
-Genera `pi_…` y `client_secret`. Si `(comercio, Idempotency-Key)` ya existe devuelve el existente; si el monto
+Guarda `return_url` si viene (ver [api.md](api.md#api-v1-servidor-del-comercio)). Genera `pi_…` y `client_secret`. Si `(comercio, Idempotency-Key)` ya existe devuelve el existente; si el monto
 o la moneda difieren → 422 `idempotency_key_reused`. Registra la transición `create` y el evento `payment_intent.created`.
 
 **Adjuntar método** (`attachPaymentMethod`): toma lock, rechaza si venció (409 `payment_intent_expired`).

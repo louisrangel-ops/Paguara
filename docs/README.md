@@ -19,6 +19,8 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [API y autenticación](api.md) | API v1, checkout, API interna, llaves, idempotencia, errores |
 | [API del dashboard](dashboard-api.md) | Contrato web ↔ servidor del panel del comercio |
 | [Webhooks](webhooks.md) | Outbox, eventos, firma, reintentos, protección SSRF |
+| [Integración con tiendas en línea](integraciones/README.md) | Patrón de checkout alojado, plataformas (WooCommerce, Shopify, Wix, Tiendanube…), orden recomendado |
+| [Plugin de WooCommerce](integraciones/woocommerce.md) | Flujo, webhook, ajustes, instalación y pruebas del plugin |
 | [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote en bolívares, spread y doble aprobación |
 | [Configuración](configuracion.md) | Variables de entorno, una por una |
 | [Despliegue, pruebas y CI](despliegue.md) | Docker, Railway, migraciones, seed, dev-jobs, pruebas, CI |

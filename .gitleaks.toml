@@ -11,3 +11,7 @@ paths = [
 regexes = [
   '''^pedido-[0-9]+-[a-z]+$''',
 ]
+# 98e5b3f: cabecera PEM sin llave en test/unit/kms.test.ts (falso positivo, ya reemplazada en la prueba)
+commits = [
+  "98e5b3f20238b14a1b9f4215aec0de67685cdc4a",
+]

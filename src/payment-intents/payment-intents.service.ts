@@ -27,6 +27,23 @@ export interface CreatePaymentIntentInput {
   paymentLinkId?: string;
   /** Solo estos métodos (cada uno debe estar activo en el comercio). Sin lista: todos los activos. */
   paymentMethodTypes?: PaymentMethodType[] | null;
+  /** A dónde vuelve el pagador al terminar en el checkout (tiendas en línea). Ver parseReturnUrl. */
+  returnUrl?: string | null;
+}
+
+/**
+ * Valida la URL de retorno del checkout: https (http solo en pruebas, para tiendas
+ * locales), sin usuario ni clave y de máximo 2048 caracteres.
+ */
+export function parseReturnUrl(value: unknown, livemode: boolean): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  const bad = (why: string) => new ApiError(400, 'return_url_invalid', `return_url inválida: ${why}`, 'invalid_request_error', { param: 'return_url' });
+  if (typeof value !== 'string' || value.length > 2048) throw bad('debe ser un texto de hasta 2048 caracteres');
+  let url: URL;
+  try { url = new URL(value); } catch { throw bad('no es una URL absoluta'); }
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && !livemode)) throw bad('debe usar https');
+  if (url.username || url.password) throw bad('no puede llevar usuario ni clave');
+  return url.toString();
 }
 
 @Injectable()
@@ -65,7 +82,7 @@ export class PaymentIntentsService {
         id, merchantId, amount: input.amount, currency: input.currency, metadata: input.metadata ?? {},
         livemode: input.livemode ?? false, idempotencyKey: input.idempotencyKey ?? null,
         clientSecret: `${id}_secret_${randomBytes(16).toString('hex')}`, customer: input.customer ?? null, ttlSeconds: ttl,
-        paymentLinkId: input.paymentLinkId ?? null, paymentMethodTypes: only,
+        paymentLinkId: input.paymentLinkId ?? null, paymentMethodTypes: only, returnUrl: input.returnUrl ?? null,
       }, input.paymentLinkId ? `payment_link:${input.paymentLinkId}` : `merchant:${merchantId}`);
       if (!created && (pi.amount !== input.amount || pi.currency !== input.currency)) {
         throw new ApiError(422, 'idempotency_key_reused', 'Esta Idempotency-Key ya creó un pago con otro monto o moneda', 'idempotency_error');

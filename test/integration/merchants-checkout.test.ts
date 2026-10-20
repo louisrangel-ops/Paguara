@@ -202,3 +202,18 @@ test('corte de lote: sin regla de split o bajo el mínimo, el comercio espera al
   assert.ok(leg.spread > 0n);
   assert.deepEqual(r2.skipped, [{ merchantId: noRule, reason: 'no_settlement_rule' }]);
 });
+
+test('return_url: se guarda al crear, el checkout la ve y una llave idempotente no la cambia', async () => {
+  const m = await ctx.merchant('acct_return');
+  const { toApi, toCheckoutApi } = await import('../../src/payment-intents/payment-intent.repository');
+  const pi = await ctx.payments.create(m, { amount: 1500n, currency: 'USD', idempotencyKey: 'woo-1-1',
+    returnUrl: 'https://tienda.test/?wc-api=paguara&order_id=1', metadata: { order_id: '1' } });
+  assert.equal(pi.return_url, 'https://tienda.test/?wc-api=paguara&order_id=1');
+  assert.equal(toApi(pi).return_url, pi.return_url);
+  assert.equal(toCheckoutApi(pi).return_url, pi.return_url);
+  const again = await ctx.payments.create(m, { amount: 1500n, currency: 'USD', idempotencyKey: 'woo-1-1', returnUrl: 'https://otra.test/' });
+  assert.equal(again.id, pi.id);
+  assert.equal(again.return_url, pi.return_url);
+  const none = await ctx.payments.create(m, { amount: 1500n, currency: 'USD' });
+  assert.equal(none.return_url, null);
+});

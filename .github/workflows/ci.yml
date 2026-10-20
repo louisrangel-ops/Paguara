@@ -33,6 +33,20 @@ jobs:
       - name: Construir la imagen
         run: docker build -t paguara .
 
+  # Plugin de WooCommerce: sintaxis y pruebas sin WordPress (docs/integraciones/woocommerce.md).
+  woocommerce:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integraciones/woocommerce/paguara-woocommerce
+    steps:
+      - uses: actions/checkout@v4
+      # ubuntu-latest ya trae PHP 8.3
+      - name: Sintaxis
+        run: find . -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Pruebas
+        run: php tests/run.php
+
   # Falla si algún commit del PR (o de main) trae un secreto. Reglas y excepciones en .gitleaks.toml.
   secrets:
     runs-on: ubuntu-latest
