@@ -553,28 +553,46 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     ]);
   }
 
-  // ---- Operadores ---------------------------------------------------------------
+  // ---- Operadores y roles ------------------------------------------------------
+  const ROLE_OPTIONS = [
+    ['support','Soporte'],['compliance','Cumplimiento'],['operations','Operaciones'],['treasury','Tesorería'],
+    ['auditor','Auditor'],['operator','Operador legado'],['master','Maestro / Superadmin'],
+  ];
   async function loadOperators() {
     const slot = $('operators');
+    if (!can('operators:read')) return;
     try {
       const { data } = await api('GET', '/operators');
       slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, ['Nombre', 'Rol', 'Desde', 'Estado', ''].map((t) => el('th', { scope: 'col', text: t })))]),
-        el('tbody', {}, data.map((o) => el('tr', {}, [
-          el('th', { scope: 'row' }, [o.name, el('br'), el('code', { text: o.id })]),
-          el('td', { text: o.role === 'master' ? 'Maestro' : 'Operador' }),
-          el('td', { text: when(o.created_at) }),
-          el('td', {}, [o.revoked_at ? pill('Revocado', 'bad') : pill('Activo', 'ok')]),
-          el('td', { class: 'actions' }, [o.revoked_at || o.id === me.id ? null : el('button', { class: 'btn danger', type: 'button', text: 'Revocar', 'aria-label': 'Revocar a ' + o.name, onclick: async () => {
-            if (!confirm('¿Revocar el acceso de ' + o.name + '? Su token deja de funcionar al instante.')) return;
-            try { await api('POST', '/operators/' + encodeURIComponent(o.id) + '/revoke'); say(o.name + ' revocado'); loadOperators(); } catch (e) { alert(e.message); }
-          } })]),
-        ]))),
+        el('thead', {}, [el('tr', {}, ['Nombre','Rol','Desde','Historial','Estado',''].map((t)=>el('th',{scope:'col',text:t})))]),
+        el('tbody', {}, data.map((o) => {
+          const role = can('operators:manage') && !o.revoked_at && o.id !== me.id
+            ? el('select', { 'aria-label':'Rol de '+o.name }, ROLE_OPTIONS.map(([v,t])=>el('option',{value:v,text:t,selected:o.role===v})))
+            : el('span',{text:ROLE_LABELS[o.role]||o.role});
+          if (role.tagName === 'SELECT') role.addEventListener('change', async () => {
+            const previous=o.role;
+            if(!confirm('¿Cambiar el rol de '+o.name+' a '+(ROLE_LABELS[role.value]||role.value)+'?')) { role.value=previous; return; }
+            role.disabled=true;
+            try{await api('POST','/operators/'+encodeURIComponent(o.id)+'/role',{role:role.value});say('Rol actualizado para '+o.name);loadOperators();}
+            catch(e){role.value=previous;role.disabled=false;alert(e.message);}
+          });
+          const hist=(o.role_history||[]).slice(0,3).map(h=>(ROLE_LABELS[h.old_role]||h.old_role)+' → '+(ROLE_LABELS[h.new_role]||h.new_role)+' · '+when(h.created_at)).join('\n');
+          const revoke = can('operators:manage') && !o.revoked_at && o.id !== me.id ? el('button',{class:'btn danger',type:'button',text:'Revocar',onclick:async()=>{
+            if(!confirm('¿Revocar el acceso de '+o.name+'? Su token deja de funcionar al instante.')) return;
+            try{await api('POST','/operators/'+encodeURIComponent(o.id)+'/revoke');say(o.name+' revocado');loadOperators();}catch(e){alert(e.message);}
+          }}):null;
+          return el('tr',{},[
+            el('th',{scope:'row'},[o.name,el('br'),el('code',{text:o.id})]),
+            el('td',{},[role]),el('td',{text:when(o.created_at)}),el('td',{style:'white-space:pre-line',text:hist||'—'}),
+            el('td',{},[o.revoked_at?pill('Revocado','bad'):pill('Activo','ok')]),el('td',{class:'actions'},[revoke])
+          ]);
+        })),
       ])]));
     } catch (e) { fail(slot, e); }
   }
   $('op-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if(!can('operators:manage')) return;
     const out = $('op-new');
     try {
       const o = await api('POST', '/operators', { name: $('op-name').value.trim(), role: $('op-role').value });
