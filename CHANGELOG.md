@@ -5,6 +5,7 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 ## 2026-10-20
 
 ### Agregado
+- **Panel total de administración y RBAC**: roles master, cumplimiento, operaciones, tesorería, soporte, auditor y operador legado; directorio de comercios, KYC, perfiles ISO 8583 y reasignación de roles. Ver [docs/admin-panel-rbac.md](docs/admin-panel-rbac.md).
 - **Documentación privada y onboarding ISO 8583**: la guía de integración `#/docs` requiere sesión; el onboarding recoge identidad, ubicación, contacto y contexto e-commerce, y la migración 012 separa MCC/MID/TID y parámetros del adquirente. Ver [docs/merchant-onboarding-iso8583.md](docs/merchant-onboarding-iso8583.md).
 - **Documentos legales (borradores)**: términos y condiciones, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable, como páginas del sitio en `#/legal`. El registro exige aceptarlos y guarda la constancia (migración 011). Deben pasar por un abogado venezolano antes de publicarse. Ver [docs/legal.md](docs/legal.md).
 
