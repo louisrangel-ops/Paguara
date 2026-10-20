@@ -108,6 +108,26 @@ export class MerchantsService {
     return rows[0];
   }
 
+  async listForAdmin(q = '', status = '', limit = 50) {
+    const term = String(q ?? '').trim();
+    const st = String(status ?? '').trim();
+    const n = Math.max(1, Math.min(100, Number(limit) || 50));
+    if (st && !['pending_kyc','active','restricted','closed'].includes(st)) {
+      throw new ApiError(400, 'status_invalid', 'Estado de comercio inválido');
+    }
+    const { rows } = await this.pool.query(
+      `SELECT m.id, m.business_name, m.rif, m.status, m.kyc_submitted_at, m.created_at AS created,
+              COALESCE(i.status, 'pending') AS iso8583_profile_status
+         FROM merchants.merchants m
+         LEFT JOIN merchants.iso8583_profiles i ON i.merchant_id = m.id
+        WHERE ($1 = '' OR m.id ILIKE '%' || $1 || '%' OR m.business_name ILIKE '%' || $1 || '%' OR m.rif ILIKE '%' || $1 || '%')
+          AND ($2 = '' OR m.status = $2)
+        ORDER BY m.created_at DESC
+        LIMIT $3`,
+      [term, st, n]);
+    return rows;
+  }
+
   /** Vista interna para revisión KYC/provisionamiento. Nunca se expone al checkout. */
   async getForReview(merchantId: string) {
     const { rows } = await this.pool.query(
