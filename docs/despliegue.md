@@ -48,6 +48,23 @@ servicio desde el `Dockerfile` con healthcheck `/health`; PostgreSQL y Redis del
 `.env.development` cambiando `INTERNAL_API_TOKEN`, `PUBLIC_BASE_URL`, `COOKIE_SECURE=true`, `WEBHOOK_ALLOW_PRIVATE=false`
 y `TRUST_PROXY=1`; segundo servicio con `node dist/scripts/dev-jobs.js`; seed una vez con `SEED_PASSWORD` propio.
 
+## Vercel (web en modo demostración)
+
+Vercel publica solo la web estática, sin API: el sitio, la documentación y el panel corren con los datos de
+ejemplo de `public/assets/site-demo.js`, y el checkout simula el pago. Sirve para mostrar el diseño; no cobra ni
+guarda nada. La API, PostgreSQL y Redis siguen yendo en Railway u otro hosting de contenedores.
+
+- `vercel.json` le dice a Vercel que no instale dependencias, que corra `node scripts/build-web.mjs` y que publique
+  `dist-web/`. Activa `cleanUrls` y cabeceras de seguridad (`X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`;
+  `no-referrer` en `/checkout`).
+- `scripts/build-web.mjs` envuelve `site.html` y `checkout.html` igual que los controladores de Nest pero **sin**
+  `window.__SERVER__`, copia `public/assets/` y apunta `DEMO_CHECKOUT_URL` a `/checkout` del mismo despliegue.
+  No incluye `/admin`, que necesita la API.
+- Rutas publicadas: `/` (sitio con rutas en el hash: `#/precios`, `#/docs`, `#/entrar`, `#/dashboard`) y `/checkout`.
+- Para crearlo: en vercel.com, **Add New → Project**, importar `louisrangel-ops/Paguara` y **Deploy** sin cambiar
+  nada (la configuración sale de `vercel.json`). Cada push a `main` vuelve a publicar y cada PR recibe su vista previa.
+- Probarlo local: `node scripts/build-web.mjs` y servir `dist-web/` con cualquier servidor estático.
+
 ## Producción
 
 **Pendiente.** Requisitos que el código ya impone: `LIVEMODE=true` con su propia base, `COOKIE_SECURE` distinto de

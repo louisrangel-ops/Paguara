@@ -13,7 +13,7 @@ tipos y medidas exactos están en [`DESIGN.md`](../DESIGN.md).
 | Panel interno | `GET /admin` | `public/admin.html` (CSS y JS en línea) | `src/admin-page.controller.ts` |
 | Estáticos | `GET /assets/*` | `public/assets/` | `src/main.ts` (`useStaticAssets`, caché de 1 h) |
 
-Sin `window.__SERVER__` el sitio corre en modo demostración contra `window.DemoApi` (`site-demo.js`), y el
+Sin `window.__SERVER__` el sitio corre en modo demostración (así se publica en Vercel, ver [despliegue](despliegue.md#vercel-web-en-modo-demostración)) contra `window.DemoApi` (`site-demo.js`), y el
 checkout sin `pi`, `cs` y `pk` simula un pago. Así se publican las demos y se toman las capturas.
 
 No hay paso de compilación: el CSS y el JS se sirven tal cual. Tampoco hay dependencias de frontend; la única

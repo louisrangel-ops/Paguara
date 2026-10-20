@@ -9,6 +9,7 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Despliegue] `vercel.json` y `scripts/build-web.mjs`: la web se publica en Vercel en modo demostración (sitio y checkout, sin API ni `/admin`) en `dist-web/` (#9).
 - [Web] Rediseño de todas las superficies con la misma paleta y logo: landing nueva (hero con el recibo sobre un mostrador verde, cinta de rieles, métodos agrupados por moneda, estados reales del pago), panel con transiciones cortas, checkout a dos columnas en pantallas anchas con métodos agrupados por moneda, y panel interno con barra superior, interruptores y contador de solicitudes (#8).
 - [Web] Sistema de movimiento sin librerías: clase `.motion` según `prefers-reduced-motion`, revelado con `IntersectionObserver`, contador, cinta CSS, borde de cabecera con `animation-timeline: scroll()` y View Transitions entre páginas públicas; ≈ 2,5 KB comprimidos (#8).
 - [Web] Google Fonts pedidas como rango variable (`wght@400..700`, `wght@500..600`); el panel interno carga también Spline Sans Mono (#8).

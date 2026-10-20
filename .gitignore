@@ -19,3 +19,5 @@ coverage/
 appendonlydir/
 *.sql.gz
 *.dump
+dist-web/
+.vercel/
