@@ -35,7 +35,7 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 | `src/database/` | `database.ts` | Pool y `withTransaction` (reintenta ante `40001`/`40P01`) |
 | `src/ledger/` | `ledger.service.ts`, `chart-of-accounts.ts`, `entry-templates.ts`, `ledger.types.ts` | [Ledger](ledger.md) |
 | `src/fx/` | `fx.service.ts`, `fx.math.ts` | [Tasas y cotizaciones](fx.md) |
-| `src/payment-intents/` | controlador, servicio, repositorio, máquina de estados, `payment-methods.ts`, `pricing.ts`, `rails/` | [PaymentIntents](payment-intents.md) y [métodos de pago](metodos-de-pago.md) |
+| `src/payment-intents/` | controlador, servicio, repositorio, máquina de estados, `payment-methods.ts`, `pricing.ts`, `rails/` (incluye `rails/iso8583/`, base de desarrollo sin registrar) | [PaymentIntents](payment-intents.md) y [métodos de pago](metodos-de-pago.md) |
 | `src/merchants/` | `merchants.service.ts` | Comercios, KYC, llaves API, reglas de liquidación |
 | `src/capabilities/` | `capabilities.service.ts`, `capability-state.ts` | [Métodos y módulos por comercio](modulos-por-comercio.md): estado efectivo, precios negociados, auditoría |
 | `src/settlements/` | `settlements.service.ts`, `internal.controller.ts` | [Liquidaciones](liquidaciones.md) y la API interna |

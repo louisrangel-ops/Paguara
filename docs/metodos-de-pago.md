@@ -58,7 +58,8 @@ entran por `POST /internal/payment_intents/:id/rail_result {source, result}`.
 
 ## Riel sandbox (`rails/sandbox.rail.ts`)
 
-**Hoy es el único riel**: `AppModule` registra un `SandboxRail` por cada riel, también con `LIVEMODE=true`.
+**Hoy es el único riel**: `buildRails` (`src/app.module.ts`) registra un `SandboxRail` por cada riel. Con `LIVEMODE=true`
+la API no arranca mientras quede un riel de prueba, para no cobrar "en vivo" contra el sandbox.
 Resultados deterministas:
 
 | Entrada | Resultado |
@@ -74,6 +75,22 @@ Resultados deterministas:
 | Cualquier otro caso | `succeeded` |
 
 Referencia: `sbx_<attemptKey>`.
+
+## ISO 8583 (base de desarrollo)
+
+Código: `rails/iso8583/codec.ts` y `rails/iso8583/simulator.ts`. Plan y requisitos del adquirente en
+[iso8583-acquirer-integration.md](iso8583-acquirer-integration.md). **No es un riel**: no implementa `RailAdapter`, no
+abre sockets, no está registrado en `buildRails` y `card_national` sigue en el sandbox.
+
+- `encodeIso`/`decodeIso`: MTI de 4 dígitos, bitmap primario (y secundario si hay campos > 64), campos ASCII fijos y
+  LLVAR según `TEST_PROFILE` (DE 2, 3, 4, 7, 11, 12, 13, 14, 18, 22, 25, 32, 37, 38, 39, 41, 42, 49). Rechaza campos fuera
+  del perfil, largos o caracteres inválidos, campos numéricos con letras, mensajes truncados y bytes sobrantes.
+- `Iso8583AcquirerSimulator`: emisor en memoria con perfil configurable (`SIMULATOR_PROFILE`: moneda 840, terminal
+  `ECOM0001`). Responde `0100`→`0110` (aprobado `00` con autorización, rechazo con `declineCode`), `0400`→`0410` y
+  `0420`→`0430` (reverso; `25` si no encuentra la original). Un `0100` repetido con el mismo STAN/RRN devuelve la
+  misma respuesta; con otros datos, error. `timeoutStan` simula un timeout de resultado desconocido
+  (`SimulatedTimeout`). `reconcile()` resume aprobados, rechazados, reversados y el neto aprobado.
+- Pruebas: `test/unit/iso8583-codec.test.ts` y `test/unit/iso8583-simulator.test.ts`.
 
 ## Pendiente
 
