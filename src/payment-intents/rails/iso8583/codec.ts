@@ -17,7 +17,7 @@ export const TEST_PROFILE: IsoProfile = {
   42:{length:15},49:{length:3,numeric:true}
 };
 export function encodeIso(mti:string, fields:IsoFields, profile:IsoProfile=TEST_PROFILE):Buffer {
-  if(!/^\\d{4}$/.test(mti)) throw new Error('invalid MTI');
+  if(!/^\d{4}$/.test(mti)) throw new Error('invalid MTI');
   const keys=Object.keys(fields).map(Number).sort((a,b)=>a-b);
   if(keys.some(k=>!Number.isInteger(k)||k<2||k>128||!profile[k])) throw new Error('unsupported field');
   const bits=Buffer.alloc(keys.some(k=>k>64)?16:8);
@@ -25,8 +25,8 @@ export function encodeIso(mti:string, fields:IsoFields, profile:IsoProfile=TEST_
   const parts:string[]=[];
   for(const k of keys){
     const spec=profile[k], value=fields[k];
-    if(!/^[\\x20-\\x7e]*$/.test(value)||value.length>(spec.length)||(!spec.variable&&value.length!==spec.length)) throw new Error('invalid field length or encoding: '+k);
-    if(spec.numeric&&!/^\\d+$/.test(value)) throw new Error('invalid numeric field: '+k);
+    if(!/^[\x20-\x7e]*$/.test(value)||value.length>(spec.length)||(!spec.variable&&value.length!==spec.length)) throw new Error('invalid field length or encoding: '+k);
+    if(spec.numeric&&!/^\d+$/.test(value)) throw new Error('invalid numeric field: '+k);
     const index=k-1;bits[Math.floor(index/8)]|=1<<(7-index%8);
     parts.push((spec.variable?String(value.length).padStart(2,'0'):'')+value);
   }
@@ -35,7 +35,7 @@ export function encodeIso(mti:string, fields:IsoFields, profile:IsoProfile=TEST_
 export function decodeIso(data:Buffer,profile:IsoProfile=TEST_PROFILE):{mti:string;fields:IsoFields}{
   if(data.length<12) throw new Error('short ISO message');
   const mti=data.subarray(0,4).toString('ascii');
-  if(!/^\\d{4}$/.test(mti)) throw new Error('invalid MTI');
+  if(!/^\d{4}$/.test(mti)) throw new Error('invalid MTI');
   const secondary=(data[4]&0x80)!==0, bitmapSize=secondary?16:8;
   if(data.length<4+bitmapSize) throw new Error('short bitmap');
   const bitmap=data.subarray(4,4+bitmapSize);let offset=4+bitmapSize;
@@ -47,12 +47,12 @@ export function decodeIso(data:Buffer,profile:IsoProfile=TEST_PROFILE):{mti:stri
     if(spec.variable){
       if(offset+2>data.length) throw new Error('truncated LLVAR');
       const prefix=data.subarray(offset,offset+2).toString('ascii');
-      if(!/^\\d{2}$/.test(prefix)) throw new Error('invalid LLVAR prefix');
+      if(!/^\d{2}$/.test(prefix)) throw new Error('invalid LLVAR prefix');
       len=Number(prefix);offset+=2;if(len>spec.length) throw new Error('LLVAR too long');
     }
     if(offset+len>data.length) throw new Error('truncated field: '+k);
     const value=data.subarray(offset,offset+len).toString('ascii');offset+=len;
-    if(!/^[\\x20-\\x7e]*$/.test(value)||spec.numeric&&!/^\\d+$/.test(value)) throw new Error('invalid field: '+k);
+    if(!/^[\x20-\x7e]*$/.test(value)||spec.numeric&&!/^\d+$/.test(value)) throw new Error('invalid field: '+k);
     fields[k]=value;
   }
   if(offset!==data.length) throw new Error('unexpected trailing bytes');
