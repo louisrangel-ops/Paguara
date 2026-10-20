@@ -108,6 +108,10 @@ En cada PR y en cada push a `main`:
 | `test` | Servicios `postgres:16` y `redis:7`; `npm ci`, `npm run typecheck`, `npm test`, `npm run test:integration` y `docker build` |
 | `secrets` | `gitleaks` v8.21.2 sobre todo el historial (`fetch-depth: 0`) con `.gitleaks.toml` |
 
+`.github/workflows/iso8583-tests.yml` (job `simulator`): en PRs que tocan `src/payment-intents/rails/iso8583/**`,
+`test/unit/iso8583-*.test.ts` o el propio workflow, y en push a `feature/iso8583-acquirer-foundation`, corre
+`npm ci`, `npm run typecheck` y `npm test` (sin servicios).
+
 ## Pruebas existentes
 
 | Archivo | Cubre |
@@ -116,6 +120,8 @@ En cada PR y en cada push a `main`:
 | `test/unit/entry-templates.test.ts` | Asientos de captura, fondos y liquidación cuadrados |
 | `test/unit/state-machine.test.ts` | Transiciones permitidas y prohibidas |
 | `test/unit/secrets-check.test.ts` | Chequeo de configuración del arranque |
+| `test/unit/iso8583-codec.test.ts` | Ida y vuelta del perfil de prueba ISO 8583 y rechazo de campos y mensajes inválidos |
+| `test/unit/iso8583-simulator.test.ts` | Simulador emisor: autorización idempotente, rechazo, timeout, reversos, conflictos de STAN/RRN, perfil propio |
 | `test/unit/hardening.test.ts` | Arranque live sin rieles de prueba, rutas internas, reglas de límite de peticiones |
 | `test/unit/kms.test.ts` | Cifrado por sobre local y AWS (cliente falso), propósito atado al dato, rotación, formatos anteriores |
 | `test/unit/totp.test.ts` | Vectores del RFC 6238, desfase de reloj, códigos de respaldo, parser de extractos, fecha de Caracas |

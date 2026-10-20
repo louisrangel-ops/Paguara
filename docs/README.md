@@ -12,6 +12,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [Máquina de estados del PaymentIntent](payment-intents.md) | Estados, eventos, congelamiento de tasa, vencimiento, idempotencia |
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |
 | [Rieles y métodos de pago](metodos-de-pago.md) | Métodos, rieles, comisiones, IVA, IGTF, riel sandbox |
+| [ISO 8583: base para el adquirente](iso8583-acquirer-integration.md) | Codec de perfil de prueba, simulador emisor y requisitos antes de conectar un switch (en inglés) |
 | [Métodos y módulos por comercio](modulos-por-comercio.md) | Interruptores de plataforma y del comercio, métodos por contrato, sandbox, precios negociados, panel interno `/admin` |
 | [API y autenticación](api.md) | API v1, checkout, API interna, llaves, idempotencia, errores |
 | [API del dashboard](dashboard-api.md) | Contrato web ↔ servidor del panel del comercio |

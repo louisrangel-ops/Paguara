@@ -1,0 +1,23 @@
+name: ISO8583 simulator tests
+on:
+  push:
+    branches: [feature/iso8583-acquirer-foundation]
+  pull_request:
+    paths:
+      - 'src/payment-intents/rails/iso8583/**'
+      - 'test/unit/iso8583-*.test.ts'
+      - '.github/workflows/iso8583-tests.yml'
+jobs:
+  simulator:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
