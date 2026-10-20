@@ -78,9 +78,8 @@
   // Interruptores por comercio (misma forma que GET /api/dashboard/capabilities)
   const CAP_STATE = Object.assign(Object.fromEntries(Object.keys(CFG).map((k) => [k, 'active'])), {
     card_national: 'disabled', banesco_panama: 'not_granted', usdt_polygon: 'pending_review', payment_links: 'active', webhooks: 'active',
-    settlement_usdt: 'active', settlement_usd: 'not_granted',
   });
-  const MODULE_NAMES = { payment_links: 'Links de pago', webhooks: 'Webhooks', settlement_usdt: 'Liquidar en USDT', settlement_usd: 'Liquidar en dólares' };
+  const MODULE_NAMES = { payment_links: 'Links de pago', webhooks: 'Webhooks' };
   function capView(key) {
     const st = CAP_STATE[key], c = CFG[key];
     const v = { object: 'capability', key, kind: c ? 'method' : 'module', name: c ? METHOD_NAMES[key] : MODULE_NAMES[key], state: st,
@@ -197,7 +196,7 @@
     makePayouts();
   }
 
-  // Lotes VES ya liquidados: 60 % en Bs, 40 % convertido a USDT con spread de 1,2 %
+  // Lotes VES ya liquidados, todo en bolívares (por ley); el último espera la doble aprobación
   function makePayouts() {
     const ves = payments.filter((p) => p.status === 'succeeded' && p.charge.currency === 'VES' && Date.parse(p.created) < now - 3 * DAY)
       .sort((a, b) => (a.created < b.created ? -1 : 1));
@@ -216,14 +215,10 @@
         step(p, 'settled', 'settle', 'settlement', created);
         p.payout = { id, batch_code: batch, created: iso(created) };
       });
-      const usdtPart = bps(total, 4000);
-      const spread = bps(usdtPart, 120);
-      const usdt = conv(usdtPart - spread, 'VES', 'USDT').amount;
       payouts.push({
         id, batch_code: batch, source_currency: 'VES', source_amount: String(total), created: iso(created),
         instructions: [
-          { currency: 'VES', amount: String(total - usdtPart), fx_rate: null, fx_spread_bps: 0, destination: { type: 'bank_ves', bank: '0134', holder: 'Café El Ávila (ejemplo)', account: '01340000000000001234' }, status: gi === 2 ? 'pending' : 'paid' },
-          { currency: 'USDT', amount: String(usdt), fx_rate: RATES['USDT/VES'], fx_spread_bps: 120, destination: { type: 'usdt_trc20', address: 'TXk3cVzr8m5Kq2hAvYJp7WnDq9sLtE4uRb' }, status: gi === 2 ? 'pending' : 'paid' },
+          { currency: 'VES', amount: String(total), fx_rate: null, fx_spread_bps: 0, destination: { type: 'bank_ves', bank: '0134', holder: 'Café El Ávila (ejemplo)', account: '01340000000000001234' }, status: gi === 2 ? 'on_hold' : 'confirmed' },
         ],
       });
     });
@@ -232,14 +227,9 @@
 
   seedData();
 
-  let rules = {
-    VES: [
-      { target_currency: 'VES', bps: 6000, destination: { type: 'bank_ves', bank: '0134', holder: 'Café El Ávila (ejemplo)', account: '01340000000000001234' } },
-      { target_currency: 'USDT', bps: 4000, destination: { type: 'usdt_trc20', address: 'TXk3cVzr8m5Kq2hAvYJp7WnDq9sLtE4uRb' } },
-    ],
-    USD: [{ target_currency: 'USD', bps: 10000, destination: { type: 'bank_usd', bank: 'Banesco Panamá', holder: 'Café El Ávila (ejemplo)', account: '201800012345' } }],
-    USDT: [{ target_currency: 'USDT', bps: 10000, destination: { type: 'usdt_trc20', address: 'TXk3cVzr8m5Kq2hAvYJp7WnDq9sLtE4uRb' } }],
-  };
+  // Por ley todo se liquida en bolívares: una cuenta en Bs por moneda cobrada (USDT aún sin cuenta)
+  const VES_ACCOUNT = { target_currency: 'VES', bps: 10000, destination: { type: 'bank_ves', bank: '0134', holder: 'Café El Ávila (ejemplo)', account: '01340000000000001234' } };
+  let rules = { VES: [VES_ACCOUNT], USD: [JSON.parse(JSON.stringify(VES_ACCOUNT))], USDT: [] };
 
   const keys = [
     { id: 'key_' + hex(10), kind: 'publishable', livemode: false, prefix: 'pk_test_51Qd', key: 'pk_test_51QdAvila' + hex(16), active: true, last_used_at: iso(now - 2 * 3600e3), created: iso(now - 40 * DAY), revoked_at: null },
@@ -415,8 +405,9 @@
     ['PUT', /^\/settlement_rules\/(VES|USD|USDT)$/, (m, b) => {
       need();
       const list = (b && b.rules) || [];
-      const sum = list.reduce((s, r) => s + Number(r.bps || 0), 0);
-      if (!list.length || sum !== 10000) fail(422, 'settlement_rules_invalid', 'Los porcentajes deben sumar 100 %.');
+      if (list.length !== 1 || list[0].target_currency !== 'VES') fail(400, 'settlement_currency_invalid', 'Las liquidaciones se pagan solo en bolívares: indica una cuenta en VES');
+      const d = list[0].destination || {};
+      if (!/^\d{20}$/.test(d.account || '') || String(d.account).slice(0, 4) !== d.bank) fail(400, 'settlement_rules_invalid', 'Indica banco, cuenta de 20 dígitos de ese banco y titular');
       rules[m[1]] = JSON.parse(JSON.stringify(list));
       return { rules: JSON.parse(JSON.stringify(rules)) };
     }],

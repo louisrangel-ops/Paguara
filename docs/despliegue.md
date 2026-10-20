@@ -65,11 +65,27 @@ guarda nada. La API, PostgreSQL y Redis siguen yendo en Railway u otro hosting d
   nada (la configuración sale de `vercel.json`). Cada push a `main` vuelve a publicar y cada PR recibe su vista previa.
 - Probarlo local: `node scripts/build-web.mjs` y servir `dist-web/` con cualquier servidor estático.
 
+## Sandbox para integraciones de comercios
+
+Los comercios integran su web contra una instancia aparte con `LIVEMODE` distinto de `true`, su propia base y
+llaves `sk_test_`/`pk_test_`. Allí todos los rieles son `SandboxRail` (no mueven dinero) y cada comercio nuevo recibe
+todos los métodos sin contrato (ver [modulos-por-comercio.md](modulos-por-comercio.md#entorno-de-pruebas-sandbox)).
+Las llaves de prueba no sirven en producción ni las live en el sandbox (401 `wrong_environment`).
+
 ## Producción
 
-**Pendiente.** Requisitos que el código ya impone: `LIVEMODE=true` con su propia base, `COOKIE_SECURE` distinto de
-`false`, `INTERNAL_API_TOKEN` propio de ≥ 32 caracteres, sin `dev-jobs` ni `seed` (se niegan a correr). Antes hace
-falta el job real de tasas, rieles reales y el cifrado de secretos de webhooks con KMS.
+**Pendiente** (rieles reales, job de tasas, conciliación). Lo que el código ya impone con `LIVEMODE=true`:
+
+- No arranca si queda algún riel de prueba (`buildRails` en `src/app.module.ts`).
+- `COOKIE_SECURE` distinto de `false`, `INTERNAL_API_TOKEN` propio de ≥ 32 caracteres, `SECRETS_ENCRYPTION_KEY`
+  (64 hex, cifra los secretos de webhooks), `INTERNAL_PORT` distinto de `PORT` y `PAYOUT_APPROVALS_REQUIRED` ≥ 2.
+- `dev-jobs` y `seed` se niegan a correr.
+
+`INTERNAL_PORT` sirve `/internal` y `/admin` y debe quedar solo en la red privada (VPN o red interna del hosting),
+nunca expuesto al público; en el puerto público esas rutas dan 404. El primer maestro se crea una sola vez con el
+token de sistema (`POST /internal/operators {name, role: 'master'}` por el puerto interno); su token `opk_…` se
+muestra una vez y desde ahí el maestro crea a los demás desde `/admin`. En desarrollo lo hace `npm run seed`
+(maestro `maestro-dev`; también al repetirlo sobre una base que ya tenía el comercio de prueba, si aún no hay maestro). Antes de cobrar dinero real falta además la rotación de llaves con KMS.
 
 ## CI (`.github/workflows/ci.yml`)
 
@@ -88,8 +104,10 @@ En cada PR y en cada push a `main`:
 | `test/unit/entry-templates.test.ts` | Asientos de captura, fondos y liquidación cuadrados |
 | `test/unit/state-machine.test.ts` | Transiciones permitidas y prohibidas |
 | `test/unit/secrets-check.test.ts` | Chequeo de configuración del arranque |
+| `test/unit/hardening.test.ts` | Arranque live sin rieles de prueba, rutas internas, reglas de límite de peticiones, cifrado de secretos |
 | `test/integration/ledger.test.ts` | Triggers del ledger, idempotencia de asientos, 100 asientos concurrentes sin deadlock |
 | `test/integration/payment-intent-flow.test.ts` | Tabla SQL = tabla TS, flujo completo, P2P, rechazos, cotización vencida, confirmaciones simultáneas, USDT, IGTF, aislamiento entre comercios |
 | `test/integration/merchants-checkout.test.ts` | Llaves, KYC, RIF, checkout con `client_secret`, idempotencia durable, vencimiento, saldos no editables, corte de lote |
-| `test/integration/capabilities.test.ts` | Defaults y solicitudes, métodos apagados, lista por pago, bloqueo global, precios y límites negociados, módulos de links/webhooks/liquidación, panel interno, Banesco Panamá en sandbox |
+| `test/integration/capabilities.test.ts` | Defaults y solicitudes, métodos apagados, lista por pago, bloqueo global, precios y límites negociados, módulos de links/webhooks, métodos por contrato y sandbox, panel interno, Banesco Panamá en sandbox |
+| `test/integration/payout-approvals.test.ts` | Operadores y roles, doble aprobación de liquidaciones, triggers de la BD, instrucciones solo en VES |
 | `test/integration/dashboard.test.ts` | scrypt, registro y sesiones, límite de login, outbox y entrega de webhooks, SSRF, listados |

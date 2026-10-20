@@ -11,7 +11,14 @@ reales) y `.env.development` (sandbox local, ficticio, versionado a propósito).
 | `PG_POOL_MAX` | `20` | Máximo de conexiones del pool | `src/database/database.ts` |
 | `REDIS_URL` | `redis://localhost:6379` | Idempotencia y límites de intentos | `src/app.module.ts` |
 | `PORT` | `3000` | Puerto HTTP | `src/main.ts` |
-| `INTERNAL_API_TOKEN` | — | Token de `/internal` (`X-Internal-Token`). Sin él, `/internal` responde 401. En despliegues públicos debe tener ≥ 32 caracteres y no ser el de ejemplo | `internal.controller.ts`, `secrets-check.ts` |
+| `INTERNAL_API_TOKEN` | — | Token de **sistema** de `/internal` (`X-Internal-Token`) para workers y cron: tasas, resultados de rieles, conciliación y cortes. No aprueba liquidaciones ni toca comercios; solo crea al primer maestro. Las personas usan su token `opk_…`. En despliegues públicos debe tener ≥ 32 caracteres y no ser el de ejemplo | `internal.controller.ts`, `secrets-check.ts` |
+| `INTERNAL_PORT` | vacío | Puerto privado donde se sirven `/internal` y `/admin`; en `PORT` dan 404. **Obligatorio con `LIVEMODE=true`** y distinto de `PORT` | `src/main.ts`, `hardening.ts` |
+| `SECRETS_ENCRYPTION_KEY` | vacío | 64 caracteres hex (`openssl rand -hex 32`). Cifra con AES-256-GCM los `whsec_` en la base. **Obligatoria desplegada**; sin ella (solo local) se guardan en claro | `secret-box.ts`, `secrets-check.ts` |
+| `PAYOUT_APPROVALS_REQUIRED` | `2` | Personas distintas que aprueban cada liquidación antes de pagarla. Con `LIVEMODE=true`, 2 o más | `settlements.service.ts`, `secrets-check.ts` |
+| `RATE_LIMIT_API_PER_MIN` | `600` | Peticiones por minuto por llave en `/v1` | `hardening.ts` |
+| `RATE_LIMIT_API_IP_PER_MIN` | `3000` | Tope por IP en `/v1`, además del de la llave (el límite corre antes de validar la llave) | `hardening.ts` |
+| `RATE_LIMIT_CHECKOUT_PER_MIN` | `120` | Por IP en `/v1/checkout` | `hardening.ts` |
+| `RATE_LIMIT_DASHBOARD_PER_MIN` | `300` | Por IP en `/api` (panel y público) | `hardening.ts` |
 | `LIVEMODE` | `false` | `true` = producción (solo llaves live). Cada modo con su propia base | `api-key.guard.ts` |
 | `COOKIE_SECURE` | seguro salvo `false` | `false` quita `Secure` a la cookie de sesión (solo http local). Distinto de `false` activa el chequeo de secretos del arranque | `auth.service.ts`, `secrets-check.ts` |
 | `TRUST_PROXY` | vacío | Valor de `trust proxy` de Express detrás de un balanceador (p. ej. `1`) | `src/main.ts` |
@@ -43,7 +50,7 @@ Termina con error si `LIVEMODE=true`.
 | Variable | Por defecto | Uso |
 |---|---|---|
 | `APP_URL` | `http://localhost:3000` | URL de la API |
-| `INTERNAL_API_TOKEN` | — (obligatoria) | Para crear las llaves |
+| `INTERNAL_API_TOKEN` | — (obligatoria) | Para crear el primer maestro del panel interno (las llaves se crean con la sesión del panel) |
 | `SEED_EMAIL` | `dev@paguara.test` | Usuario del panel |
 | `SEED_PASSWORD` | `paguara-dev-123` | Clave; **obligatoria** si `COOKIE_SECURE` no es `false` |
 
@@ -58,5 +65,8 @@ Termina con error si `LIVEMODE=true`.
 | `WEBHOOK_ALLOW_HTTP` / `WEBHOOK_ALLOW_PRIVATE` | `true` / `true` | `false` / `false` |
 | `PUBLIC_BASE_URL` | `http://localhost:3000` | El dominio público |
 | `TRUST_PROXY` | vacío | `1` detrás del balanceador |
+| `SECRETS_ENCRYPTION_KEY` | vacío (en claro) | `openssl rand -hex 32`, en el gestor de secretos |
+| `INTERNAL_PORT` | vacío (mismo puerto) | Un puerto solo de la red privada (obligatorio en producción) |
+| `PAYOUT_APPROVALS_REQUIRED` | `1` | `2` o más |
 
 Al agregar una variable: documentarla aquí, agregarla a `.env.example` (y a `.env.development` si aplica) y al [CHANGELOG](CHANGELOG.md).

@@ -158,18 +158,18 @@ export class DashboardService {
 
   async saveSettlementRules(merchantId: string, source: string, rules: Array<{ target_currency?: string; bps?: number; destination?: Record<string, unknown> }>) {
     if (!isCurrency(source) || !CURRENCIES.includes(source)) throw new ApiError(400, 'currency_invalid', 'Moneda origen no soportada');
-    if (!Array.isArray(rules) || rules.length === 0 || rules.length > 3) throw new ApiError(400, 'settlement_rules_invalid', 'Define entre 1 y 3 destinos');
-    const seen = new Set<string>();
-    const clean = rules.map((r) => {
-      const t = r.target_currency ?? '';
-      if (!isCurrency(t) || !CURRENCIES.includes(t) || seen.has(t)) throw new ApiError(400, 'settlement_rules_invalid', 'Cada destino debe tener una moneda distinta');
-      seen.add(t);
-      if (!Number.isInteger(r.bps) || r.bps! <= 0) throw new ApiError(400, 'settlement_rules_invalid', 'Cada porcentaje debe ser mayor que cero');
-      if (!r.destination || typeof r.destination !== 'object' || JSON.stringify(r.destination).length > 1000) {
-        throw new ApiError(400, 'settlement_rules_invalid', 'Falta el destino del pago');
-      }
-      return { targetCurrency: t, bps: r.bps!, destination: r.destination };
-    });
+    // Por ley se liquida en bolívares: una sola cuenta bancaria venezolana recibe el 100 %
+    if (!Array.isArray(rules) || rules.length !== 1 || rules[0].target_currency !== 'VES') {
+      throw new ApiError(400, 'settlement_currency_invalid', 'Las liquidaciones se pagan solo en bolívares: indica una cuenta en VES');
+    }
+    const d = rules[0].destination;
+    const bank = String(d?.bank ?? '');
+    const account = String(d?.account ?? '').replace(/[\s-]/g, '');
+    const holder = String(d?.holder ?? '').trim();
+    if (!/^\d{4}$/.test(bank) || !/^\d{20}$/.test(account) || !account.startsWith(bank) || holder.length < 3 || holder.length > 120) {
+      throw new ApiError(400, 'settlement_rules_invalid', 'Indica banco, cuenta de 20 dígitos de ese banco y titular');
+    }
+    const clean = [{ targetCurrency: 'VES' as const, bps: 10_000, destination: { type: 'bank_ves', bank, account, holder } }];
     await this.merchants.setSettlementRules(merchantId, source, clean);
     return this.settlementRules(merchantId);
   }

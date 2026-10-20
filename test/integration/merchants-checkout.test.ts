@@ -108,8 +108,9 @@ test('los saldos no se editan a mano y cada partida guarda el saldo resultante',
 test('corte de lote: sin regla de split o bajo el mínimo, el comercio espera al próximo corte', async () => {
   const noRule = await ctx.merchant('acct_norule');
   const small = await ctx.merchant('acct_small');
-  await ctx.merchants.setSettlementRules(small, 'USD', [{ targetCurrency: 'USD', bps: 10000, destination: { bank: 'Banesco Panamá' } }]);
-  await assert.rejects(ctx.merchants.setSettlementRules(small, 'USD', [{ targetCurrency: 'USD', bps: 9000, destination: {} }]), /100 %/);
+  await assert.rejects(ctx.merchants.setSettlementRules(small, 'USD', [{ targetCurrency: 'USD', bps: 10000, destination: { bank: 'Banesco Panamá' } }]), /solo en bolívares/);
+  await assert.rejects(ctx.merchants.setSettlementRules(small, 'USD', [{ targetCurrency: 'VES', bps: 9000, destination: {} }]), /100 %/);
+  await ctx.merchants.setSettlementRules(small, 'USD', [{ targetCurrency: 'VES', bps: 10000, destination: { bank: '0134', account: '01340000000000001234' } }]);
 
   const ids: string[] = [];
   for (const m of [noRule, small]) {
@@ -122,7 +123,20 @@ test('corte de lote: sin regla de split o bajo el mínimo, el comercio espera al
   const r = await ctx.settlements.runCutoff('2026-10-16-USD', { sourceCurrency: 'USD', minAmount: 5000n });
   assert.equal(r.payouts.length, 0);
   assert.deepEqual(r.skipped.map((s) => s.reason), ['below_minimum', 'below_minimum']);
+  // Pagar en bolívares lo cobrado en dólares exige bolívares en la tesorería
+  await withTransaction(ctx.pool, (c) => ctx.ledger.post(c, {
+    idempotencyKey: 'treasury:ves:usd-cut', kind: 'capital_contribution', description: 'Aporte de capital en VES (prueba)',
+    lines: [
+      { accountCode: 'platform:cash:VES', currency: 'VES', amount: 10_000_000n },
+      { accountCode: 'platform:fx_position:VES', currency: 'VES', amount: -10_000_000n },
+    ],
+  }));
   const r2 = await ctx.settlements.runCutoff('2026-10-17-USD', { sourceCurrency: 'USD' });
   assert.deepEqual(r2.payouts.map((p) => p.merchantId), [small]);
+  // Lo cobrado en dólares se le paga en bolívares a tasa BCV, menos el spread de conversión
+  const [leg] = r2.payouts[0].legs;
+  assert.equal(leg.currency, 'VES');
+  assert.equal(leg.rate, '36.5');
+  assert.ok(leg.spread > 0n);
   assert.deepEqual(r2.skipped, [{ merchantId: noRule, reason: 'no_settlement_rule' }]);
 });

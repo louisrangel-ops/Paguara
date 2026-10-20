@@ -31,7 +31,7 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 
 | Carpeta | Piezas | Responsabilidad |
 |---|---|---|
-| `src/common/` | `money.ts`, `errors.ts`, `api-exception.filter.ts`, `api-key.guard.ts`, `idempotency.interceptor.ts`, `secrets-check.ts` | Dinero exacto, formato de errores, autenticación por llave, idempotencia, chequeo de arranque |
+| `src/common/` | `money.ts`, `errors.ts`, `api-exception.filter.ts`, `api-key.guard.ts`, `idempotency.interceptor.ts`, `secrets-check.ts`, `hardening.ts`, `secret-box.ts` | Dinero exacto, formato de errores, autenticación por llave, idempotencia, chequeo de arranque, cabeceras, puerto interno, límite de peticiones, cifrado de secretos |
 | `src/database/` | `database.ts` | Pool y `withTransaction` (reintenta ante `40001`/`40P01`) |
 | `src/ledger/` | `ledger.service.ts`, `chart-of-accounts.ts`, `entry-templates.ts`, `ledger.types.ts` | [Ledger](ledger.md) |
 | `src/fx/` | `fx.service.ts`, `fx.math.ts` | [Tasas y cotizaciones](fx.md) |
@@ -50,7 +50,7 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 | `PaymentIntentsController` | `/v1/payment_intents` | `SecretKeyGuard` (`sk_`) + `IdempotencyInterceptor` |
 | `CheckoutController` | `/v1/checkout/payment_intents` | `PublishableKeyGuard` (`pk_`) + `client_secret` + `IdempotencyInterceptor` |
 | `AccountCapabilitiesController` | `/v1/account/capabilities` | `SecretKeyGuard` (`sk_`), sin interceptor de idempotencia |
-| `InternalController` | `/internal` | `InternalTokenGuard` (`X-Internal-Token`) |
+| `InternalController` | `/internal` (solo en `INTERNAL_PORT`) | `InternalTokenGuard` (`X-Internal-Token`: token de sistema o de operador `opk_…`, con rol `master`/`operator` por ruta) |
 | `DashboardAuthController` | `/api/dashboard` (signup, login, logout) | Ninguna; exige `X-Requested-With: fetch` |
 | `DashboardController` | `/api/dashboard` | `SessionGuard` (cookie `sid`) |
 | `PublicController` | `/api/public/methods`, `/pay/:slug` | Ninguna |
@@ -99,5 +99,5 @@ docs/                 esta documentación
 
 - `public/checkout.html`: checkout alojado tipo Stripe Checkout. Habla solo con `/v1/checkout/...`. Sin parámetros corre en modo demostración.
 - `public/site.html` + `public/assets/`: una sola página con rutas por hash (`#/`, `#/docs`, `#/entrar`, `#/registro`, `#/dashboard/...`). El servidor inyecta `window.__SERVER__ = true`; fuera del servidor corre en modo demo (`site-demo.js`).
-- `public/admin.html`: panel interno de operaciones (solicitudes de métodos/módulos, interruptores globales, ficha de comercio). Pide el `INTERNAL_API_TOKEN` al operador y lo guarda en `sessionStorage`.
+- `public/admin.html`: panel interno de operaciones (liquidaciones por aprobar, solicitudes con contrato, interruptores globales, ficha de comercio, operadores). Cada persona entra con su token `opk_…`, que queda en `sessionStorage`; las secciones del maestro se ocultan a los operadores. Solo se sirve en `INTERNAL_PORT`.
 - La marca es la constante `BRAND` en `public/assets/site.js` y en el script de `checkout.html`. Diseño en [`DESIGN.md`](../DESIGN.md); superficies, movimiento y verificación visual en [web.md](web.md).

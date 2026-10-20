@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, HttpCode, Inject, Injectable, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, HttpCode, Inject, Injectable, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { ApiError } from '../common/errors';
@@ -9,24 +9,55 @@ import { PaymentIntentsService } from '../payment-intents/payment-intents.servic
 import { RailResult } from '../payment-intents/rails/rail-adapter';
 import { PayoutLeg } from '../ledger/entry-templates';
 import { MerchantsService, MerchantStatus } from '../merchants/merchants.service';
-import { SettlementsService } from './settlements.service';
+import { Operator, SettlementsService } from './settlements.service';
+import { OperatorsService } from './operators.service';
 import { Pool } from 'pg';
 import { PG_POOL, withTransaction } from '../database/database';
 import { LedgerService } from '../ledger/ledger.service';
 import { CapabilitiesService, PlatformMerchantPatch } from '../capabilities/capabilities.service';
 
-/** Endpoints para workers internos y el panel administrativo (KYC, conciliación, tesorería). */
+/**
+ * Quién llama a /internal: `system` es el token compartido de los workers
+ * (INTERNAL_API_TOKEN: tasas, resultados de rieles, cortes); una persona entra
+ * con su token de operador (`opk_…`) y queda en la auditoría con su nombre.
+ */
+export type InternalActor = { kind: 'system' } | ({ kind: 'operator' } & Operator);
+type InternalRequest = Request & { internalActor: InternalActor };
+
 @Injectable()
 export class InternalTokenGuard implements CanActivate {
-  canActivate(ctx: ExecutionContext): boolean {
+  constructor(private readonly operators: OperatorsService) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest<InternalRequest>();
+    const got = req.header('x-internal-token') ?? '';
     const expected = process.env.INTERNAL_API_TOKEN;
-    const got = ctx.switchToHttp().getRequest<Request>().header('x-internal-token') ?? '';
-    if (!expected || got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
-      throw new ApiError(401, 'unauthenticated', 'Token interno inválido');
+    if (expected && got.length === expected.length && timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
+      req.internalActor = { kind: 'system' };
+      return true;
     }
+    const op = await this.operators.authenticate(got);
+    if (!op) throw new ApiError(401, 'unauthenticated', 'Token interno inválido');
+    req.internalActor = { kind: 'operator', ...op };
     return true;
   }
 }
+
+/** Solo un maestro: KYC, métodos por contrato, precios, interruptores, llaves y cuentas de liquidación. */
+function master(req: InternalRequest): Operator {
+  const a = req.internalActor;
+  if (a.kind !== 'operator' || a.role !== 'master') throw new ApiError(403, 'insufficient_role', 'Esta acción la hace solo el maestro de Paguara');
+  return a;
+}
+
+/** Una persona (no el token de los workers). */
+function person(req: InternalRequest): Operator {
+  const a = req.internalActor;
+  if (a.kind !== 'operator') throw new ApiError(403, 'insufficient_role', 'Esta acción la hace una persona con su token de operador');
+  return a;
+}
+
+const actorName = (req: InternalRequest) => (req.internalActor.kind === 'operator' ? `platform:${req.internalActor.name}` : 'platform:system');
 
 function currency(v: string): Currency {
   if (!isCurrency(v)) throw new ApiError(400, 'currency_invalid', `Moneda no soportada: ${v}`);
@@ -44,14 +75,55 @@ export class InternalController {
     private readonly ledger: LedgerService,
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly capabilities: CapabilitiesService,
+    private readonly operators: OperatorsService,
   ) {}
+
+  /** Quién soy (el panel interno lo usa al entrar). */
+  @Get('whoami')
+  whoami(@Req() req: InternalRequest) {
+    const a = req.internalActor;
+    return a.kind === 'operator' ? { kind: a.kind, id: a.id, name: a.name, role: a.role } : { kind: 'system' };
+  }
+
+  @Get('operators')
+  async listOperators(@Req() req: InternalRequest) {
+    master(req);
+    return { object: 'list', data: await this.operators.list() };
+  }
+
+  /** Con el token de sistema, solo el primer maestro; después los crea un maestro. El token se ve una vez. */
+  @Post('operators')
+  createOperator(@Req() req: InternalRequest, @Body() b: { name?: string; role?: string }) {
+    return this.operators.create(b, req.internalActor.kind === 'system' ? 'system' : req.internalActor);
+  }
+
+  @Post('operators/:id/revoke')
+  @HttpCode(200)
+  revokeOperator(@Req() req: InternalRequest, @Param('id') id: string) {
+    return this.operators.revoke(id, master(req));
+  }
+
+  /** Liquidaciones esperando aprobación. */
+  @Get('payouts/pending')
+  async pendingPayouts(@Req() req: InternalRequest) {
+    person(req);
+    return { object: 'list', data: await this.settlements.pendingApprovals() };
+  }
+
+  /** Cada persona aprueba una vez; con las aprobaciones pedidas, tesorería puede pagar. */
+  @Post('payouts/:id/approve')
+  @HttpCode(200)
+  approvePayout(@Req() req: InternalRequest, @Param('id') id: string) {
+    return this.settlements.approvePayout(id, person(req));
+  }
 
   /**
    * Tesorería registra capital depositado en sus cuentas (p. ej. USDT en la wallet
    * para pagar la porción en USDT de las liquidaciones). `reference` hace la operación idempotente.
    */
   @Post('treasury/contributions')
-  async contribute(@Body() b: { currency: string; amount: string; reference: string }) {
+  async contribute(@Req() req: InternalRequest, @Body() b: { currency: string; amount: string; reference: string }) {
+    master(req);
     const c = currency(b.currency);
     if (!/^\d{1,20}$/.test(b.amount ?? '') || BigInt(b.amount) <= 0n) throw new ApiError(400, 'amount_invalid', 'amount debe ser un entero positivo en unidades mínimas');
     if (!b.reference) throw new ApiError(400, 'reference_required', 'Falta reference (comprobante del depósito)');
@@ -67,63 +139,71 @@ export class InternalController {
   }
 
   @Post('merchants')
-  async createMerchant(@Body() b: { business_name: string; rif: string; webhook_url?: string }) {
+  async createMerchant(@Req() req: InternalRequest, @Body() b: { business_name: string; rif: string; webhook_url?: string }) {
+    master(req);
     return this.merchants.create({ businessName: b.business_name, rif: b.rif, webhookUrl: b.webhook_url });
   }
 
   /** Aprobación o suspensión tras revisión de KYC. */
   @Post('merchants/:id/status')
   @HttpCode(200)
-  async setMerchantStatus(@Param('id') id: string, @Body() b: { status: MerchantStatus }) {
+  async setMerchantStatus(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { status: MerchantStatus }) {
+    master(req);
     await this.merchants.setStatus(id, b.status);
     return { id, status: b.status };
   }
 
   /** La llave en claro se devuelve solo aquí; después solo existe su hash. */
   @Post('merchants/:id/api_keys')
-  async createApiKey(@Param('id') id: string, @Body() b: { kind: 'secret' | 'publishable'; livemode: boolean }) {
+  async createApiKey(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { kind: 'secret' | 'publishable'; livemode: boolean }) {
+    master(req);
     return this.merchants.createApiKey(id, b.kind, b.livemode === true);
   }
 
   @Post('merchants/:id/settlement_rules')
   @HttpCode(200)
-  async setRules(@Param('id') id: string, @Body() b: { source_currency: string;
+  async setRules(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { source_currency: string;
     rules: Array<{ target_currency: string; bps: number; destination: Record<string, unknown> }> }) {
+    master(req);
     await this.merchants.setSettlementRules(id, currency(b.source_currency),
       b.rules.map((r) => ({ targetCurrency: currency(r.target_currency), bps: r.bps, destination: r.destination })));
     return { ok: true };
   }
 
   @Get('capabilities')
-  async globalCapabilities() {
+  async globalCapabilities(@Req() req: InternalRequest) {
+    person(req);
     return { object: 'list', data: await this.capabilities.listGlobal() };
   }
 
   /** Solicitudes de los comercios esperando aprobación (bandeja del panel interno). */
   @Get('capability_requests')
-  async capabilityRequests() {
+  async capabilityRequests(@Req() req: InternalRequest) {
+    person(req);
     return { object: 'list', data: await this.capabilities.pendingRequests() };
   }
 
   /** Interruptor global de un método o módulo (riel caído, banco sin convenio) y si se da a comercios nuevos. */
   @Post('capabilities/:key')
   @HttpCode(200)
-  setGlobalCapability(@Param('key') key: string, @Body() b: { global_enabled?: boolean; default_for_new?: boolean; actor?: string }) {
-    return this.capabilities.platformSetGlobal(key, b, `platform:${b.actor ?? 'internal'}`);
+  setGlobalCapability(@Req() req: InternalRequest, @Param('key') key: string, @Body() b: { global_enabled?: boolean; default_for_new?: boolean }) {
+    master(req);
+    return this.capabilities.platformSetGlobal(key, b, actorName(req));
   }
 
   @Get('merchants/:id/capabilities')
-  async merchantCapabilities(@Param('id') id: string) {
+  async merchantCapabilities(@Req() req: InternalRequest, @Param('id') id: string) {
+    person(req);
     await this.merchants.get(id);
     return { object: 'list', data: await this.capabilities.list(id) };
   }
 
-  /** Aprobar o bloquear un método/módulo a un comercio, o fijarle precio y límites negociados. */
+  /** Habilitar (con contrato) o bloquear un método/módulo a un comercio, o fijarle precio y límites negociados. */
   @Post('merchants/:id/capabilities/:key')
   @HttpCode(200)
-  setMerchantCapability(@Param('id') id: string, @Param('key') key: string, @Body() b: PlatformMerchantPatch & { actor?: string }) {
-    const { actor, ...patch } = b;
-    return this.capabilities.platformSetForMerchant(id, key, patch, `platform:${actor ?? 'internal'}`);
+  setMerchantCapability(@Req() req: InternalRequest, @Param('id') id: string, @Param('key') key: string, @Body() b: PlatformMerchantPatch) {
+    master(req);
+    return this.capabilities.platformSetForMerchant(id, key, b, actorName(req));
   }
 
   @Post('payment_intents/expire')

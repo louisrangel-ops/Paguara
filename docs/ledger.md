@@ -57,17 +57,19 @@ Cr platform:tax_payable:iva:VES            −9,05   16 % de la comisión
 
 **Fondos recibidos** (`railFundsReceivedEntry`): `Dr cash / Cr rail_clearing` por el bruto del lote y, por comercio, `Dr pending / Cr available` por su neto.
 
-**Liquidación** (`merchantPayoutEntry`), split 60 % VES / 40 % USDT, spread 1,2 %:
+**Liquidación** (`merchantPayoutEntry`). Por ley siempre en bolívares (migración 010): lo cobrado en VES sale sin
+conversión y lo cobrado en USD o USDT se convierte a VES con spread de 1,2 %:
 ```
-Porción VES:   Dr available:VES / Cr cash:VES
-Porción USDT:  Dr available:VES (porción)
-               Cr fx_spread_revenue:VES (spread)
-               Cr fx_position:VES (porción − spread)
-               Dr fx_position:USDT (convertido) / Cr cash:USDT
+Cobrado en VES:   Dr available:VES / Cr cash:VES
+Cobrado en USD:   Dr available:USD (saldo)
+                  Cr fx_spread_revenue:USD (spread)
+                  Cr fx_position:USD (saldo − spread)
+                  Dr fx_position:VES (convertido) / Cr cash:VES
 ```
-El reparto usa `allocateByBps`: el céntimo de redondeo va a la última porción, y la consulta de reglas ordena la porción en moneda origen al final para que la absorba sin convertirla.
+La plantilla sigue aceptando varias porciones (`allocateByBps`, el céntimo de redondeo va a la última), pero la base
+solo admite una regla en VES al 100 %.
 
-**Aporte de capital** (`InternalController.contribute`): `Dr cash:<MON> / Cr fx_position:<MON>`. Sirve, por ejemplo, para fondear la wallet USDT antes de liquidar porciones en USDT (si no, `cash:USDT` quedaría negativa y la BD rechaza con `P0003`).
+**Aporte de capital** (`InternalController.contribute`): `Dr cash:<MON> / Cr fx_position:<MON>`. Sirve, por ejemplo, para registrar los bolívares con que la tesorería paga lo cobrado en divisas (si no, `cash:VES` quedaría negativa y la BD rechaza con `P0003`).
 
 ## Concurrencia
 

@@ -8,6 +8,9 @@
 - **Chequeo al arrancar** (`src/common/secrets-check.ts`, llamado en `main.ts`): si `LIVEMODE=true` o `COOKIE_SECURE`
   no es `false`, la API no arranca cuando `INTERNAL_API_TOKEN` es un valor de ejemplo (`cambia-esto`, `dev-internal-token`)
   o tiene menos de 32 caracteres, ni cuando se combina `LIVEMODE=true` con `COOKIE_SECURE=false`.
+- Desplegada exige además `SECRETS_ENCRYPTION_KEY`. Con `LIVEMODE=true` exige `INTERNAL_PORT` distinto de `PORT` y
+  `PAYOUT_APPROVALS_REQUIRED` ≥ 2, y **no arranca mientras algún método use el riel de prueba** (`buildRails` en
+  `src/app.module.ts`): el sandbox aprueba cobros sin mover dinero y la liquidación pagaría dinero real.
 - `seed` exige `SEED_PASSWORD` propio fuera de local; `seed` y `dev-jobs` no corren con `LIVEMODE=true`.
 - **gitleaks** en CI sobre todo el historial y, opcional, en local con `pre-commit install` (`.pre-commit-config.yaml`).
   Excepciones en `.gitleaks.toml` (solo los datos de demo de `public/assets/site-demo.js` y referencias `pedido-N-x`).
@@ -18,6 +21,8 @@
 | Secreto | Cómo |
 |---|---|
 | `INTERNAL_API_TOKEN` | Cambiar la variable y reiniciar la API y `dev-jobs` |
+| Token de operador `opk_…` | El maestro revoca a la persona en `/admin` (o `POST /internal/operators/:id/revoke`) y le crea uno nuevo |
+| `SECRETS_ENCRYPTION_KEY` | Aún sin rotación automática: descifrar con la vieja y volver a cifrar con la nueva requiere un script (pendiente) |
 | Llave `sk_`/`pk_` | *Rotar* en el panel (`POST /api/dashboard/api_keys/:id/roll`): crea una nueva y revoca la anterior |
 | `whsec_` de un webhook | Crear un endpoint nuevo y desactivar el anterior |
 
@@ -43,15 +48,43 @@ por despliegue. Detalle en [api.md](api.md#llaves-api).
 - `/pay/:slug`: 30 visitas por minuto por IP; el slug se valida antes de consultar.
 - El sitio se sirve con `X-Frame-Options: DENY`.
 
-## Panel interno (`/admin`)
+## Borde de la API (`src/common/hardening.ts`, aplicado en `main.ts`)
 
-La página no trae datos: el operador escribe el `INTERNAL_API_TOKEN` y su nombre (va como `actor` a la auditoría
-`merchants.capability_changes`). El token queda en `sessionStorage` y se borra al cerrar la pestaña. Se sirve con
-`Cache-Control: no-store`, `X-Frame-Options: DENY` y `Referrer-Policy: no-referrer`.
+- **Cabeceras** en toda respuesta: `Content-Security-Policy` (scripts propios e inline, más cdnjs para qrcodejs;
+  estilos y fuentes de Google Fonts; `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'none'`),
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Cross-Origin-Opener-Policy: same-origin` y, salvo con `COOKIE_SECURE=false`, `Strict-Transport-Security` de un año.
+  Sin `X-Powered-By`. Las páginas que ya fijaban `no-referrer` lo siguen haciendo.
+- **Límite de peticiones** con ventana de un minuto en Redis: `/v1` 600 por llave (la llave se cuenta por su hash,
+  no se guarda) y 3000 por IP (el límite corre antes de validar la llave: sin el de IP, una llave inventada distinta en
+  cada petición lo esquivaría), `/v1/checkout` 120 por IP, `/api` 300 por IP. Al pasarse: 429 `rate_limited` con `Retry-After` y
+  `RateLimit-Limit`/`RateLimit-Remaining`. Si Redis falla se deja pasar y se registra. `/internal` y `/health` no se limitan.
+- **Rutas internas fuera de internet**: con `INTERNAL_PORT`, `/internal` y `/admin` responden solo en ese puerto (red
+  privada del hosting o VPN); en el público dan 404 como si no existieran.
+
+## Panel interno (`/admin`) y operadores
+
+- Cada persona entra con **su propio token** (`opk_` + 48 hex; en `platform.operators` solo su SHA-256). El
+  `INTERNAL_API_TOKEN` es de los procesos automáticos: el panel no lo acepta.
+- Roles: **maestro** (KYC, habilitar métodos por contrato, precios y límites, interruptores, llaves y cuentas de
+  liquidación de un comercio, aportes de tesorería, alta y baja de operadores) y **operador** (ver bandejas y aprobar
+  liquidaciones). El token de sistema hace lo de los workers (tasas, resultados de rieles, conciliación, cortes,
+  vencimientos) y solo puede crear al primer maestro. Fuera de rol: 403 `insufficient_role`.
+- La auditoría (`merchants.capability_changes.actor`) guarda `platform:<nombre del operador>`, que el servidor saca del
+  token (ya no lo escribe la persona).
+- **Métodos por contrato**: ningún método se le da solo a un comercio nuevo en producción (`CHECK
+  capabilities_methods_by_contract`); el maestro lo habilita con `contract_ref` del contrato firmado (400
+  `contract_required` sin él), que queda en `merchants.capabilities.contract_ref`.
+- **Doble aprobación de liquidaciones**: ver [liquidaciones.md](liquidaciones.md#4-aprobación-antes-de-pagar).
+- La página no trae datos; el token queda en `sessionStorage` y se borra al cerrar la pestaña. Se sirve con
+  `Cache-Control: no-store`, `X-Frame-Options: DENY` y `Referrer-Policy: no-referrer`.
 
 ## Webhooks
 
 Firma HMAC-SHA256 y protección SSRF por IP efectiva de conexión: [webhooks.md](webhooks.md#protección-ssrf).
+Los secretos `whsec_` se guardan cifrados con AES-256-GCM (`enc:v1:<iv>:<tag>:<cifrado>`, `src/common/secret-box.ts`)
+con la llave de `SECRETS_ENCRYPTION_KEY`, que vive en el gestor de secretos del hosting: un respaldo robado de la base
+no sirve para firmar webhooks. Los guardados antes en claro se siguen leyendo.
 
 ## Base de datos
 
@@ -60,6 +93,8 @@ app o un `UPDATE` manual no puede descuadrar el ledger, editar un saldo ni cambi
 
 ## Pendiente
 
-- Cifrado con KMS de `webhooks.endpoints.secret` y `merchants.webhook_secret` (hoy en claro: se necesitan para firmar).
-- Autenticación propia para el panel interno (hoy: el token interno compartido) y revisión de KYC desde ahí (hoy: `POST /internal/merchants/:id/status`).
+- Llave de cifrado en un KMS con rotación (hoy: variable de entorno) y script para volver a cifrar los secretos viejos.
+- Doble factor (2FA) para el panel del comercio y para los operadores; pedirlo también al cambiar la cuenta de liquidación.
+- Revisión de KYC desde el panel interno (hoy: `POST /internal/merchants/:id/status`).
 - Recuperación de contraseña e invitación de usuarios; permisos por rol en el resto del panel.
+- Conciliación bancaria diaria contra el ledger, alertas y prueba de penetración externa antes de cobrar dinero real.

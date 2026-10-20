@@ -114,38 +114,53 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
 <main id="main">
   <div class="intro">
     <h1>Panel interno</h1>
-    <p class="muted">Solicitudes de los comercios, interruptores de toda la plataforma y capacidades por comercio. Cada cambio queda en la auditoría con tu nombre.</p>
+    <p class="muted">Liquidaciones por aprobar, solicitudes de los comercios, interruptores de la plataforma y capacidades por comercio. Cada acción queda en la auditoría con tu nombre.</p>
   </div>
 
   <form class="card auth" id="auth" autocomplete="off">
     <h2>Acceso</h2>
     <div class="row">
-      <div class="field"><label for="token">Token interno</label><input id="token" type="password" required spellcheck="false" autocomplete="off"></div>
-      <div class="field"><label for="actor">Tu nombre (para la auditoría)</label><input id="actor" required maxlength="60" placeholder="ana.ops…"></div>
+      <div class="field"><label for="token">Tu token de operador</label><input id="token" type="password" required spellcheck="false" autocomplete="off" placeholder="opk_…"></div>
       <button class="btn" type="submit">Entrar</button>
     </div>
-    <p class="muted">El token se guarda solo en esta pestaña y se borra al cerrarla.</p>
+    <p class="muted">Cada persona tiene su propio token; te lo da el maestro de Paguara. Se guarda solo en esta pestaña y se borra al cerrarla.</p>
     <div id="auth-err" role="alert"></div>
   </form>
 
   <div id="app" hidden>
     <div style="display:grid;gap:20px">
+      <section class="card" aria-labelledby="po-h">
+        <div class="head"><h2 id="po-h">Liquidaciones por aprobar<span class="count" id="po-count" hidden></span></h2><button class="btn ghost" type="button" id="reload">Actualizar</button></div>
+        <p class="muted">Ninguna liquidación llega a tesorería sin la aprobación de personas distintas. Revisa monto, comercio y cuenta antes de aprobar.</p>
+        <div id="payouts"></div>
+      </section>
       <section class="card" aria-labelledby="req-h">
-        <div class="head"><h2 id="req-h">Solicitudes pendientes<span class="count" id="req-count" hidden></span></h2><button class="btn ghost" type="button" id="reload">Actualizar</button></div>
+        <h2 id="req-h">Solicitudes de métodos y módulos<span class="count" id="req-count" hidden></span></h2>
+        <p class="muted master-only">Un método de pago se habilita solo con su contrato firmado: escribe el número antes de aprobar.</p>
         <div id="requests"></div>
       </section>
-      <section class="card" aria-labelledby="glob-h">
+      <section class="card master-only" aria-labelledby="glob-h">
         <h2 id="glob-h">Interruptores de la plataforma</h2>
-        <p class="muted">“Para todos” apagado bloquea el método o módulo en todos los comercios al instante. “Comercios nuevos” decide si se le da a quien se registra.</p>
+        <p class="muted">“Para todos” apagado bloquea el método o módulo en todos los comercios al instante. “Comercios nuevos” solo aplica a módulos: los métodos de pago se habilitan por contrato.</p>
         <div id="globals"></div>
       </section>
-      <section class="card" aria-labelledby="m-h">
+      <section class="card master-only" aria-labelledby="m-h">
         <h2 id="m-h">Un comercio</h2>
         <form class="row" id="m-form">
           <div class="field"><label for="m-id">Id del comercio</label><input id="m-id" required placeholder="acct_…" spellcheck="false" pattern="[a-z0-9_]+"></div>
           <button class="btn" type="submit">Buscar</button>
         </form>
         <div id="merchant"></div>
+      </section>
+      <section class="card master-only" aria-labelledby="op-h">
+        <h2 id="op-h">Operadores</h2>
+        <form class="row" id="op-form">
+          <div class="field"><label for="op-name">Nombre</label><input id="op-name" required minlength="2" maxlength="60" placeholder="ana.tesoreria…"></div>
+          <div class="field"><label for="op-role">Rol</label><select id="op-role"><option value="operator">Operador (aprueba liquidaciones)</option><option value="master">Maestro</option></select></div>
+          <button class="btn" type="submit">Crear</button>
+        </form>
+        <div id="op-new" role="status"></div>
+        <div id="operators"></div>
       </section>
     </div>
   </div>
@@ -174,16 +189,20 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
   };
   const pill = (t, tone) => el('span', { class: 'pill' + (tone ? ' ' + tone : ''), text: t });
   const say = (m) => { const s = $('status'); s.textContent = ''; setTimeout(() => { s.textContent = m; }, 50); };
+  const when = (d) => new Date(d).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' });
+  const bs = (minor) => { const v = BigInt(minor); const neg = v < 0n; const a = neg ? -v : v; return (neg ? '-' : '') + (a / 100n).toLocaleString('es-VE') + ',' + String(a % 100n).padStart(2, '0') + ' Bs'; };
   const store = {
     get(k) { try { return sessionStorage.getItem(k) || ''; } catch (_) { return ''; } },
     set(k, v) { try { sessionStorage.setItem(k, v); } catch (_) { /* sin almacenamiento: se pide de nuevo */ } },
+    del(k) { try { sessionStorage.removeItem(k); } catch (_) { /* nada que borrar */ } },
   };
-  let token = store.get('paguara.internal.token'), actor = store.get('paguara.internal.actor');
+  let token = store.get('paguara.internal.token');
+  let me = null;
 
   async function api(method, path, body) {
     const res = await fetch('/internal' + path, {
       method, headers: Object.assign({ 'X-Internal-Token': token, Accept: 'application/json' }, body ? { 'Content-Type': 'application/json' } : {}),
-      body: body ? JSON.stringify(Object.assign({ actor }, body)) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
     });
     let data = null;
     try { data = await res.json(); } catch (_) { /* sin cuerpo */ }
@@ -191,54 +210,120 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     return data;
   }
   const fail = (slot, e) => slot.replaceChildren(el('div', { class: 'banner bad', role: 'alert', text: e.message }));
+  const isMaster = () => me && me.role === 'master';
 
   $('auth').addEventListener('submit', async (e) => {
     e.preventDefault();
-    token = $('token').value.trim(); actor = $('actor').value.trim();
-    if (!token || !actor) return;
-    await start();
+    token = $('token').value.trim();
+    if (token) await start();
   });
   async function start() {
-    try { await api('GET', '/capabilities'); }
-    catch (e) { $('auth').hidden = false; $('app').hidden = true; fail($('auth-err'), e.status === 401 ? new Error('Token inválido') : e); return; }
-    store.set('paguara.internal.token', token); store.set('paguara.internal.actor', actor);
+    try {
+      me = await api('GET', '/whoami');
+      if (me.kind !== 'operator') throw new Error('Ese es el token de los procesos automáticos. Entra con tu token personal de operador (opk_…).');
+    } catch (e) {
+      store.del('paguara.internal.token');
+      $('auth').hidden = false; $('app').hidden = true;
+      fail($('auth-err'), e.status === 401 ? new Error('Token inválido o revocado') : e);
+      return;
+    }
+    store.set('paguara.internal.token', token);
     $('auth').hidden = true; $('app').hidden = false;
-    $('who').textContent = 'Operando como ' + actor;
-    loadRequests(); loadGlobals();
+    $('who').textContent = me.name + (isMaster() ? ' · maestro' : ' · operador');
+    document.querySelectorAll('.master-only').forEach((n) => { n.hidden = !isMaster(); });
+    refresh();
   }
-  $('reload').addEventListener('click', () => { loadRequests(); loadGlobals(); });
+  function refresh() {
+    loadPayouts(); loadRequests();
+    if (isMaster()) { loadGlobals(); loadOperators(); }
+  }
+  $('reload').addEventListener('click', refresh);
 
+  function counter(id, n, one, many) {
+    const c = $(id);
+    c.hidden = false; c.textContent = String(n); c.toggleAttribute('data-zero', !n);
+    c.setAttribute('aria-label', n === 1 ? '1 ' + one : n + ' ' + many);
+  }
+
+  // ---- Liquidaciones por aprobar ---------------------------------------------
+  async function loadPayouts() {
+    const slot = $('payouts');
+    try {
+      const { data } = await api('GET', '/payouts/pending');
+      counter('po-count', data.length, 'liquidación', 'liquidaciones');
+      if (!data.length) { slot.replaceChildren(el('p', { class: 'empty', text: 'No hay liquidaciones esperando aprobación.' })); return; }
+      slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, ['Comercio', 'Lote', 'A pagar', 'Cuenta', 'Aprobaciones', ''].map((t) => el('th', { scope: 'col', text: t })))]),
+        el('tbody', {}, data.map((p) => {
+          const ins = (p.instructions || [])[0] || {};
+          const d = ins.destination || {};
+          const mine = p.approvals.some((a) => a.operator === me.name);
+          const approve = el('button', { class: 'btn', type: 'button', text: mine ? 'Ya aprobaste' : 'Aprobar', disabled: mine, 'aria-label': 'Aprobar la liquidación de ' + p.business_name });
+          approve.addEventListener('click', async () => {
+            if (!confirm('¿Aprobar el pago de ' + bs(ins.amount) + ' a ' + p.business_name + ' (cuenta ' + (d.account || '?') + ')?')) return;
+            approve.disabled = true;
+            try {
+              const r = await api('POST', '/payouts/' + encodeURIComponent(p.id) + '/approve');
+              say(r.status === 'approved' ? 'Liquidación aprobada: ya puede pagarse' : 'Aprobación registrada: falta otra persona');
+              loadPayouts();
+            } catch (e) { approve.disabled = false; alert(e.message); }
+          });
+          return el('tr', {}, [
+            el('th', { scope: 'row' }, [p.business_name, el('br'), el('code', { text: p.merchant_id })]),
+            el('td', {}, [p.batch_code, el('br'), el('code', { text: 'Cobrado en ' + p.source_currency + ' · ' + when(p.created_at) })]),
+            el('td', { class: 'num', text: bs(ins.amount) + (ins.fx_rate ? ' (tasa ' + ins.fx_rate + ')' : '') }),
+            el('td', {}, [el('code', { text: (d.bank || '') + ' · ' + (d.account || '') }), el('br'), d.holder || '']),
+            el('td', {}, [pill(p.approvals.length + ' de ' + p.approvals_required, p.approvals.length ? 'note' : 'warn'),
+              p.approvals.length ? el('div', { class: 'muted', text: p.approvals.map((a) => a.operator).join(', ') }) : null]),
+            el('td', { class: 'actions' }, [approve]),
+          ]);
+        })),
+      ])]));
+    } catch (e) { fail(slot, e); }
+  }
+
+  // ---- Solicitudes ------------------------------------------------------------
+  const contractInput = (label) => el('input', { class: 'sm', style: 'width:150px', maxlength: '120', placeholder: 'CT-2026-…', 'aria-label': label, spellcheck: 'false' });
   async function loadRequests() {
     const slot = $('requests');
     try {
       const { data } = await api('GET', '/capability_requests');
-      const count = $('req-count');
-      count.hidden = false; count.textContent = String(data.length); count.toggleAttribute('data-zero', !data.length);
-      count.setAttribute('aria-label', data.length === 1 ? '1 solicitud' : data.length + ' solicitudes');
+      counter('req-count', data.length, 'solicitud', 'solicitudes');
       if (!data.length) { slot.replaceChildren(el('p', { class: 'empty', text: 'No hay solicitudes pendientes.' })); return; }
       slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, ['Comercio', 'Pide', 'KYC', 'Desde', ''].map((t) => el('th', { scope: 'col', text: t })))]),
-        el('tbody', {}, data.map((r) => el('tr', {}, [
-          el('th', { scope: 'row' }, [r.business_name, el('br'), el('code', { text: r.merchant_id + ' · ' + r.rif })]),
-          el('td', { text: r.name }),
-          el('td', {}, [r.merchant_status === 'active' ? pill('Activo', 'ok') : pill(r.kyc_submitted_at ? 'KYC en revisión' : 'Sin KYC', 'warn')]),
-          el('td', { text: new Date(r.requested_at).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' }) }),
-          el('td', { class: 'actions' }, [
-            el('button', { class: 'btn', type: 'button', text: 'Aprobar', 'aria-label': 'Aprobar ' + r.name + ' para ' + r.business_name, onclick: () => decide(r, 'allowed') }),
-            el('button', { class: 'btn danger', type: 'button', text: 'Rechazar', 'aria-label': 'Rechazar ' + r.name + ' para ' + r.business_name, onclick: () => decide(r, 'blocked') }),
-          ]),
-        ]))),
+        el('thead', {}, [el('tr', {}, ['Comercio', 'Pide', 'KYC', 'Desde', isMaster() ? 'Contrato' : null, isMaster() ? '' : null].filter((t) => t !== null).map((t) => el('th', { scope: 'col', text: t })))]),
+        el('tbody', {}, data.map((r) => {
+          const method = r.key !== 'payment_links' && r.key !== 'webhooks';
+          const contract = method ? contractInput('Contrato de ' + r.name + ' con ' + r.business_name) : null;
+          return el('tr', {}, [
+            el('th', { scope: 'row' }, [r.business_name, el('br'), el('code', { text: r.merchant_id + ' · ' + r.rif })]),
+            el('td', { text: r.name }),
+            el('td', {}, [r.merchant_status === 'active' ? pill('Activo', 'ok') : pill(r.kyc_submitted_at ? 'KYC en revisión' : 'Sin KYC', 'warn')]),
+            el('td', { text: when(r.requested_at) }),
+            isMaster() ? el('td', {}, [contract || el('span', { class: 'muted', text: 'No aplica' })]) : null,
+            isMaster() ? el('td', { class: 'actions' }, [
+              el('button', { class: 'btn', type: 'button', text: 'Aprobar', 'aria-label': 'Aprobar ' + r.name + ' para ' + r.business_name, onclick: () => decide(r, 'allowed', contract) }),
+              el('button', { class: 'btn danger', type: 'button', text: 'Rechazar', 'aria-label': 'Rechazar ' + r.name + ' para ' + r.business_name, onclick: () => decide(r, 'blocked') }),
+            ]) : null,
+          ]);
+        })),
       ])]));
     } catch (e) { fail(slot, e); }
   }
-  async function decide(r, status) {
+  async function decide(r, status, contract) {
+    const body = { platform_status: status };
+    if (contract) {
+      if (contract.value.trim().length < 3) { contract.focus(); alert('Escribe el número del contrato firmado con el comercio.'); return; }
+      body.contract_ref = contract.value.trim();
+    }
     try {
-      await api('POST', '/merchants/' + encodeURIComponent(r.merchant_id) + '/capabilities/' + encodeURIComponent(r.key), { platform_status: status });
+      await api('POST', '/merchants/' + encodeURIComponent(r.merchant_id) + '/capabilities/' + encodeURIComponent(r.key), body);
       say((status === 'allowed' ? 'Aprobado: ' : 'Rechazado: ') + r.name + ' para ' + r.business_name);
       loadRequests(); loadGlobals();
     } catch (e) { alert(e.message); }
   }
 
+  // ---- Interruptores ----------------------------------------------------------
   async function loadGlobals() {
     const slot = $('globals');
     try {
@@ -261,7 +346,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
           return el('tr', {}, [
             el('th', { scope: 'row' }, [c.name, el('br'), el('code', { text: c.key })]),
             el('td', {}, [box('global_enabled', 'Para todos')]),
-            el('td', {}, [box('default_for_new', 'Comercios nuevos')]),
+            el('td', {}, [c.kind === 'method' ? el('span', { class: 'muted', text: 'Por contrato' }) : box('default_for_new', 'Comercios nuevos')]),
             el('td', { class: 'num', text: String(c.merchants_active) }),
             el('td', { class: 'num', text: String(c.pending) }),
           ]);
@@ -270,6 +355,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     } catch (e) { fail(slot, e); }
   }
 
+  // ---- Un comercio ------------------------------------------------------------
   $('m-form').addEventListener('submit', (e) => { e.preventDefault(); loadMerchant($('m-id').value.trim()); });
   async function loadMerchant(id) {
     const slot = $('merchant');
@@ -277,9 +363,9 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     try {
       const { data } = await api('GET', '/merchants/' + encodeURIComponent(id) + '/capabilities');
       slot.replaceChildren(
-        el('p', { class: 'muted', text: 'Precio y límites vacíos = los de la plataforma. Los límites van en unidades mínimas de la moneda de cobro (céntimos, o millonésimas de USDT).' }),
+        el('p', { class: 'muted', text: 'Para permitir un método escribe el número de su contrato. Precio y límites vacíos = los de la plataforma. Los límites van en unidades mínimas de la moneda de cobro (céntimos, o millonésimas de USDT).' }),
         el('div', { class: 'table-wrap' }, [el('table', {}, [
-          el('thead', {}, [el('tr', {}, ['Capacidad', 'Estado', 'Plataforma', 'Comisión (bps)', 'Fijo (centavos USD)', 'Mínimo', 'Máximo', ''].map((t) => el('th', { scope: 'col', text: t })))]),
+          el('thead', {}, [el('tr', {}, ['Capacidad', 'Estado', 'Plataforma', 'Contrato', 'Comisión (bps)', 'Fijo (centavos USD)', 'Mínimo', 'Máximo', ''].map((t) => el('th', { scope: 'col', text: t })))]),
           el('tbody', {}, data.map((c) => row(id, c))),
         ])]),
       );
@@ -295,6 +381,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     const fee = num(c.custom_pricing ? c.fee_bps : null, 'Comisión');
     const fixed = num(c.custom_pricing ? c.fixed_usd : null, 'Fijo');
     const min = num(c.min_amount, 'Mínimo'), max = num(c.max_amount, 'Máximo');
+    const contract = isMethod ? contractInput('Contrato de ' + c.name) : null;
     const save = el('button', { class: 'btn', type: 'button', text: 'Guardar', 'aria-label': 'Guardar ' + c.name });
     save.addEventListener('click', async () => {
       const body = {};
@@ -302,6 +389,8 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
       if (isMethod) {
         const v = (i) => (i.value.trim() === '' ? null : i.value.trim());
         Object.assign(body, { fee_bps: v(fee), fee_fixed_usd: v(fixed), min_amount: v(min), max_amount: v(max) });
+        if (contract.value.trim()) body.contract_ref = contract.value.trim();
+        if (status.value === 'allowed' && !body.contract_ref) { contract.focus(); alert('Escribe el número del contrato firmado para permitir ' + c.name + '.'); return; }
       }
       save.disabled = true;
       try { await api('POST', '/merchants/' + encodeURIComponent(id) + '/capabilities/' + encodeURIComponent(c.key), body); say(c.name + ' guardado'); await loadMerchant(id); }
@@ -311,11 +400,44 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
       el('th', { scope: 'row' }, [c.name, el('br'), el('code', { text: c.key })]),
       el('td', {}, [pill(label, tone)]),
       el('td', {}, [status]),
+      el('td', {}, [contract || el('span', { class: 'muted', text: 'No aplica' })]),
       ...(isMethod ? [fee, fixed, min, max].map((i) => el('td', {}, [i])) : [el('td', { colspan: '4', class: 'muted', text: 'Sin precio ni límites' })]),
       el('td', { class: 'actions' }, [save]),
     ]);
   }
 
-  if (token && actor) { $('token').value = token; $('actor').value = actor; start(); }
+  // ---- Operadores ---------------------------------------------------------------
+  async function loadOperators() {
+    const slot = $('operators');
+    try {
+      const { data } = await api('GET', '/operators');
+      slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, ['Nombre', 'Rol', 'Desde', 'Estado', ''].map((t) => el('th', { scope: 'col', text: t })))]),
+        el('tbody', {}, data.map((o) => el('tr', {}, [
+          el('th', { scope: 'row' }, [o.name, el('br'), el('code', { text: o.id })]),
+          el('td', { text: o.role === 'master' ? 'Maestro' : 'Operador' }),
+          el('td', { text: when(o.created_at) }),
+          el('td', {}, [o.revoked_at ? pill('Revocado', 'bad') : pill('Activo', 'ok')]),
+          el('td', { class: 'actions' }, [o.revoked_at || o.id === me.id ? null : el('button', { class: 'btn danger', type: 'button', text: 'Revocar', 'aria-label': 'Revocar a ' + o.name, onclick: async () => {
+            if (!confirm('¿Revocar el acceso de ' + o.name + '? Su token deja de funcionar al instante.')) return;
+            try { await api('POST', '/operators/' + encodeURIComponent(o.id) + '/revoke'); say(o.name + ' revocado'); loadOperators(); } catch (e) { alert(e.message); }
+          } })]),
+        ]))),
+      ])]));
+    } catch (e) { fail(slot, e); }
+  }
+  $('op-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const out = $('op-new');
+    try {
+      const o = await api('POST', '/operators', { name: $('op-name').value.trim(), role: $('op-role').value });
+      out.replaceChildren(el('div', { class: 'banner ok' }, [el('b', { text: 'Token de ' + o.name + ': ' }), el('code', { text: o.token }),
+        el('div', { text: 'Entrégaselo por un canal seguro. No se vuelve a mostrar.' })]));
+      $('op-name').value = '';
+      loadOperators();
+    } catch (err) { fail(out, err); }
+  });
+
+  if (token) { $('token').value = token; start(); }
 })();
 </script>

@@ -3,8 +3,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { ApiError } from '../common/errors';
 import { Currency } from '../common/money';
-import { PG_POOL } from '../database/database';
-import { assertModuleActive, settlementModuleFor } from '../capabilities/capability-state';
+import { PG_POOL, withTransaction } from '../database/database';
+import { grantSandboxMethods } from '../capabilities/capability-state';
+import { sealSecret } from '../common/secret-box';
 
 export type MerchantStatus = 'pending_kyc' | 'active' | 'restricted' | 'closed';
 
@@ -34,10 +35,13 @@ export class MerchantsService {
   async create(input: { businessName: string; rif: string; id?: string; webhookUrl?: string }) {
     const id = input.id ?? `acct_${randomBytes(8).toString('hex')}`;
     const webhookSecret = input.webhookUrl ? `whsec_${randomBytes(24).toString('hex')}` : null;
-    await this.pool.query(
-      `INSERT INTO merchants.merchants (id, business_name, rif, webhook_url, webhook_secret) VALUES ($1, $2, $3, $4, $5)`,
-      [id, input.businessName, input.rif.toUpperCase(), input.webhookUrl ?? null, webhookSecret],
-    );
+    await withTransaction(this.pool, async (c) => {
+      await c.query(
+        `INSERT INTO merchants.merchants (id, business_name, rif, webhook_url, webhook_secret) VALUES ($1, $2, $3, $4, $5)`,
+        [id, input.businessName, input.rif.toUpperCase(), input.webhookUrl ?? null, webhookSecret && sealSecret(webhookSecret)],
+      );
+      await grantSandboxMethods(c, id);
+    });
     return { id, webhookSecret };
   }
 
@@ -144,14 +148,16 @@ export class MerchantsService {
     return r ? { merchantId: r.merchant_id, merchantStatus: r.status, kind: r.kind, livemode: r.livemode } : null;
   }
 
-  /** Reemplaza la regla de split del comercio para una moneda origen (p. ej. VES → 60 % VES + 40 % USDT). */
+  /**
+   * Cuenta a la que se liquida lo cobrado en una moneda. Por ley se le paga al
+   * comercio en bolívares: una sola regla, VES al 100 %; lo cobrado en USD o
+   * USDT se convierte en el corte (la base también lo exige, migración 010).
+   */
   async setSettlementRules(merchantId: string, sourceCurrency: Currency, rules: SettlementRule[]) {
-    const total = rules.reduce((s, r) => s + r.bps, 0);
-    if (total !== 10_000) throw new ApiError(400, 'settlement_rules_invalid', `Los porcentajes deben sumar 100 % (suman ${total / 100} %)`);
-    for (const r of rules) {
-      const mod = settlementModuleFor(sourceCurrency, r.targetCurrency);
-      if (mod) await assertModuleActive(this.pool, merchantId, mod);
+    if (rules.length !== 1 || rules[0].targetCurrency !== 'VES') {
+      throw new ApiError(400, 'settlement_currency_invalid', 'Las liquidaciones se pagan solo en bolívares: indica una cuenta en VES');
     }
+    if (rules[0].bps !== 10_000) throw new ApiError(400, 'settlement_rules_invalid', `La cuenta en bolívares recibe el 100 % (indicaste ${rules[0].bps / 100} %)`);
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');

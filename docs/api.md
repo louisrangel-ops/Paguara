@@ -7,7 +7,7 @@ unidades mínimas** (también se aceptan números enteros seguros en la entrada)
 |---|---|---|---|
 | API v1 | `/v1/payment_intents` | Servidor del comercio | `Authorization: Bearer sk_test_…` / `sk_live_…` |
 | Checkout | `/v1/checkout/payment_intents` | Navegador del pagador | `Authorization: Bearer pk_…` + `client_secret` del intent |
-| Interna | `/internal` | Workers, cron, tesorería, panel administrativo | `X-Internal-Token: <INTERNAL_API_TOKEN>` |
+| Interna | `/internal` (solo en `INTERNAL_PORT`) | Workers y cron (token de sistema) y personas del panel interno (token de operador) | `X-Internal-Token: <INTERNAL_API_TOKEN>` o `X-Internal-Token: opk_…` |
 | Dashboard | `/api/dashboard` | Web del comercio | Cookie de sesión `sid` + `X-Requested-With: fetch` — ver [dashboard-api.md](dashboard-api.md) |
 
 ## Llaves API (`src/common/api-key.guard.ts`, `src/merchants/merchants.service.ts`)
@@ -62,25 +62,34 @@ La página `GET /checkout?pi=<id>&cs=<client_secret>&pk=<pk_…>` (`public/check
 
 ## API interna (`src/settlements/internal.controller.ts`)
 
-| Método | Ruta | Cuerpo | Qué hace |
-|---|---|---|---|
-| POST | `/internal/merchants` | `{business_name, rif, webhook_url?}` | Crea comercio (`pending_kyc`) |
-| POST | `/internal/merchants/:id/status` | `{status}` | Aprueba o suspende tras KYC |
-| POST | `/internal/merchants/:id/api_keys` | `{kind, livemode}` | Crea llave y la devuelve en claro |
-| POST | `/internal/merchants/:id/settlement_rules` | `{source_currency, rules: [{target_currency, bps, destination}]}` | Reemplaza la regla de split |
-| POST | `/internal/fx/rates` | `{base, quote, rate, source, observed_at?}` | Registra una tasa |
-| POST | `/internal/payment_intents/:id/rail_result` | `{source, result: RailResult}` | Aplica el resultado de un riel |
-| POST | `/internal/payment_intents/expire` | — | Vence intents abandonados → `{canceled}` |
-| POST | `/internal/rail_batches` | `{batch_id, rail, currency, payment_intent_ids}` | Concilia fondos recibidos |
-| POST | `/internal/settlement_batches` | `{batch_code, source_currency, min_amount?, spread_bps?}` | Corte de lote |
-| GET | `/internal/capabilities` | — | Catálogo con `merchants_active` y `pending` por capacidad |
-| POST | `/internal/capabilities/:key` | `{global_enabled?, default_for_new?, actor?}` | Interruptor global |
-| GET | `/internal/capability_requests` | — | Solicitudes en `pending_review`, las más viejas primero |
-| GET | `/internal/merchants/:id/capabilities` | — | Capacidades de un comercio |
-| POST | `/internal/merchants/:id/capabilities/:key` | `{platform_status?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?, actor?}` | Aprobar, bloquear o negociar (`null` vuelve al valor de plataforma) |
-| POST | `/internal/treasury/contributions` | `{currency, amount, reference}` | Aporte de capital (idempotente por `reference`) |
+Quién puede: **S** token de sistema (workers, cron), **O** cualquier operador, **M** solo el maestro.
 
-El token se compara en tiempo constante. Sin `INTERNAL_API_TOKEN` configurado, todo `/internal` responde 401.
+| Método | Ruta | Cuerpo | Quién | Qué hace |
+|---|---|---|---|---|
+| GET | `/internal/whoami` | — | S, O | `{kind: 'system'}` o `{kind: 'operator', id, name, role}` |
+| POST | `/internal/operators` | `{name, role: 'master'\|'operator'}` | M (S solo el primer maestro) | Crea a una persona y devuelve su token `opk_…` una sola vez |
+| GET | `/internal/operators` | — | M | Operadores con rol y si están revocados |
+| POST | `/internal/operators/:id/revoke` | — | M | Revoca el token (no a sí mismo) |
+| POST | `/internal/merchants` | `{business_name, rif, webhook_url?}` | M | Crea comercio (`pending_kyc`) |
+| POST | `/internal/merchants/:id/status` | `{status}` | M | Aprueba o suspende tras KYC |
+| POST | `/internal/merchants/:id/api_keys` | `{kind, livemode}` | M | Crea llave y la devuelve en claro |
+| POST | `/internal/merchants/:id/settlement_rules` | `{source_currency, rules: [{target_currency: 'VES', bps: 10000, destination}]}` | M | Cuenta en bolívares para esa moneda cobrada |
+| POST | `/internal/fx/rates` | `{base, quote, rate, source, observed_at?}` | S, O | Registra una tasa |
+| POST | `/internal/payment_intents/:id/rail_result` | `{source, result: RailResult}` | S, O | Aplica el resultado de un riel |
+| POST | `/internal/payment_intents/expire` | — | S, O | Vence intents abandonados → `{canceled}` |
+| POST | `/internal/rail_batches` | `{batch_id, rail, currency, payment_intent_ids}` | S, O | Concilia fondos recibidos |
+| POST | `/internal/settlement_batches` | `{batch_code, source_currency, min_amount?, spread_bps?}` | S, O | Corte de lote: liquidaciones en VES retenidas |
+| GET | `/internal/payouts/pending` | — | O | Liquidaciones esperando aprobación |
+| POST | `/internal/payouts/:id/approve` | — | O | Una aprobación; con las pedidas, se libera para pagar |
+| GET | `/internal/capabilities` | — | O | Catálogo con `merchants_active` y `pending` por capacidad |
+| POST | `/internal/capabilities/:key` | `{global_enabled?, default_for_new?}` | M | Interruptor global (`default_for_new` solo en módulos) |
+| GET | `/internal/capability_requests` | — | O | Solicitudes en `pending_review`, las más viejas primero |
+| GET | `/internal/merchants/:id/capabilities` | — | O | Capacidades de un comercio |
+| POST | `/internal/merchants/:id/capabilities/:key` | `{platform_status?, contract_ref?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?}` | M | Habilitar (un método exige `contract_ref`), bloquear o negociar (`null` vuelve al valor de plataforma) |
+| POST | `/internal/treasury/contributions` | `{currency, amount, reference}` | M | Aporte de capital (idempotente por `reference`) |
+
+El token de sistema se compara en tiempo constante; el de operador se busca por su SHA-256. Token desconocido o revocado: 401. Fuera de rol: 403 `insufficient_role`.
+La auditoría usa el nombre del operador que trae el token; el campo `actor` del cuerpo ya no se usa.
 La API interna no usa el interceptor de idempotencia: cada operación es idempotente por su propia llave
 (asiento, `batch_code`, `reference`).
 
@@ -117,13 +126,13 @@ Forma: `{ "error": { "type", "code", "message", ...extra } }` (`ApiExceptionFilt
 
 | HTTP | Códigos |
 |---|---|
-| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request` |
+| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid` |
 | 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials` |
 | 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role` |
-| 404 | `resource_missing` |
-| 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked`, `capability_locked`, `capability_not_requestable`, `no_payment_methods_available` (en `/pay/:slug`) |
+| 404 | `resource_missing`, `not_found` (rutas internas en el puerto público) |
+| 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked`, `capability_locked`, `capability_not_requestable`, `no_payment_methods_available` (en `/pay/:slug`), `payout_already_approved`, `already_approved_by_you`, `payout_not_approved`, `name_taken`, `cannot_revoke_self` |
 | 422 | `idempotency_key_reused` |
-| 429 | `too_many_attempts`, `too_many_requests` |
+| 429 | `too_many_attempts`, `too_many_requests`, `rate_limited` (tipo `rate_limit_error`, con `Retry-After`) |
 | 500 | `internal_error`, `rail_unavailable` |
 | 503 | `fx_rate_unavailable`, `unhealthy` |
 

@@ -31,5 +31,6 @@ export function toApiError(err: unknown): ApiError {
   }
   if (pgCode === 'P0003') return new ApiError(409, 'insufficient_balance', (err as Error).message, 'api_error');
   if (pgCode === 'P0011' || pgCode === 'P0012') return new ApiError(409, 'payment_intent_unexpected_state', (err as Error).message);
+  if (pgCode === 'P0020') return new ApiError(409, 'payout_not_approved', (err as Error).message, 'api_error');
   return new ApiError(500, 'internal_error', 'Error interno', 'api_error');
 }

@@ -40,6 +40,8 @@ export interface PlatformMerchantPatch {
   fee_fixed_usd?: string | number | null;
   min_amount?: string | number | null;
   max_amount?: string | number | null;
+  /** Contrato firmado con el comercio: obligatorio para habilitar un método de pago. */
+  contract_ref?: string;
 }
 
 @Injectable()
@@ -55,7 +57,7 @@ export class CapabilitiesService {
   }
 
   async get(db: Db, merchantId: string, key: string): Promise<CapabilityView> {
-    const { rows } = await db.query<CapabilityRow>(`${ROWS} WHERE pc.key = $2`, [merchantId, key]);
+    const { rows } = await db.query<CapabilityRow>(`${ROWS} AND pc.key = $2`, [merchantId, key]);
     if (!rows[0]) throw new ApiError(404, 'resource_missing', `No existe la capacidad ${key}`);
     return view(rows[0]);
   }
@@ -108,8 +110,17 @@ export class CapabilitiesService {
       min_amount: num(patch.min_amount, 'min_amount'),
       max_amount: num(patch.max_amount, 'max_amount'),
     };
+    const contract = patch.contract_ref === undefined ? undefined : String(patch.contract_ref).trim();
+    if (contract !== undefined && (contract.length < 3 || contract.length > 120)) {
+      throw new ApiError(400, 'contract_ref_invalid', 'contract_ref debe tener entre 3 y 120 caracteres', 'invalid_request_error', { param: 'contract_ref' });
+    }
     return withTransaction(this.pool, async (c) => {
       const before = await this.lockRow(c, merchantId, key);
+      // Los métodos de pago se habilitan solo bajo contrato legal con el comercio
+      if (before.kind === 'method' && status === 'allowed' && !contract) {
+        throw new ApiError(400, 'contract_required', `Para habilitar ${before.name} indica el contrato firmado (contract_ref)`,
+          'invalid_request_error', { param: 'contract_ref' });
+      }
       if (before.kind !== 'method' && (values.fee_bps !== undefined || values.fee_fixed_usd !== undefined
         || values.min_amount !== undefined || values.max_amount !== undefined)) {
         throw new ApiError(400, 'capability_invalid', 'Los módulos no tienen precio ni límites');
@@ -118,7 +129,7 @@ export class CapabilitiesService {
         [merchantId, key, actor]);
       const sets: string[] = [];
       const args: unknown[] = [merchantId, key, actor];
-      for (const [col, v] of Object.entries(values)) {
+      for (const [col, v] of Object.entries({ ...values, contract_ref: contract })) {
         if (v === undefined) continue;
         args.push(v);
         sets.push(`${col} = $${args.length}`);
@@ -141,8 +152,11 @@ export class CapabilitiesService {
     }
     return withTransaction(this.pool, async (c) => {
       const { rows } = await c.query<{ key: string; kind: string; global_enabled: boolean; default_for_new: boolean }>(
-        'SELECT key, kind, global_enabled, default_for_new FROM platform.capabilities WHERE key = $1 FOR UPDATE', [key]);
+        'SELECT key, kind, global_enabled, default_for_new FROM platform.capabilities WHERE key = $1 AND retired_at IS NULL FOR UPDATE', [key]);
       if (!rows[0]) throw new ApiError(404, 'resource_missing', `No existe la capacidad ${key}`);
+      if (rows[0].kind === 'method' && patch.default_for_new === true) {
+        throw new ApiError(400, 'contract_required', 'Los métodos de pago no se dan solos a comercios nuevos: se habilitan por contrato');
+      }
       const after = {
         ...rows[0],
         global_enabled: (patch.global_enabled as boolean | undefined) ?? rows[0].global_enabled,
@@ -164,6 +178,7 @@ export class CapabilitiesService {
               count(mc.merchant_id) FILTER (WHERE mc.platform_status = 'allowed' AND mc.merchant_enabled)::int AS merchants_active,
               count(mc.merchant_id) FILTER (WHERE mc.platform_status = 'pending_review')::int AS pending
          FROM platform.capabilities pc LEFT JOIN merchants.capabilities mc ON mc.key = pc.key
+        WHERE pc.retired_at IS NULL
         GROUP BY pc.key`);
     const order = [...Object.keys(PAYMENT_METHODS), ...Object.keys(MODULE_NAMES)];
     const pos = (k: string) => (order.indexOf(k) + 1 || order.length + 1);
