@@ -144,6 +144,21 @@ export class InternalController {
     return this.merchants.create({ businessName: b.business_name, rif: b.rif, webhookUrl: b.webhook_url });
   }
 
+  /** Detalle completo para cumplimiento: KYC + perfil ISO 8583 provisionado. */
+  @Get('merchants/:id')
+  async merchantForReview(@Req() req: InternalRequest, @Param('id') id: string) {
+    person(req);
+    return this.merchants.getForReview(id);
+  }
+
+  /** MID/TID/MCC y parámetros ISO 8583 asignados por el adquirente; solo maestro. */
+  @Post('merchants/:id/iso8583_profile')
+  @HttpCode(200)
+  setIso8583Profile(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: Record<string, unknown>) {
+    master(req);
+    return this.merchants.setIso8583Profile(id, b);
+  }
+
   /** Aprobación o suspensión tras revisión de KYC. */
   @Post('merchants/:id/status')
   @HttpCode(200)
