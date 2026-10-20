@@ -35,8 +35,10 @@ test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV con
   assert.equal(pi.tax_amount, 905n);         // IVA 16 % de la comisión
   assert.equal(pi.net_amount, 358438n);
 
-  // La tasa sube DESPUÉS de cotizar: el cobro respeta la tasa congelada
-  await ctx.fx.recordRate('USD', 'VES', '40', 'BCV');
+  // Existe una tasa BCV futura, pero el cobro de hoy conserva la tasa oficial vigente congelada.
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  await ctx.fx.recordRate('USD', 'VES', '40', 'BCV', new Date(), tomorrow.toISOString().slice(0, 10));
   pi = await payments.confirm('m_1', pi.id, { phone: '04141234567', bank: '0102', otp: '123456' });
   assert.equal(pi.status, 'succeeded');
   assert.equal(pi.charge_amount, 365000n);
