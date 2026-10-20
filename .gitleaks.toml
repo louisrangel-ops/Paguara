@@ -3,13 +3,11 @@
 useDefault = true
 
 [allowlist]
-description = "Datos ficticios del modo demo y de la documentación"
+description = "Datos ficticios del modo demo, documentación y marcadores de pruebas"
 paths = [
   '''^public/assets/site-demo\.js$''',
 ]
 regexes = [
-  '''^pedido-[0-9]+-[a-z]+]
-'',
-  '''^-----BEGIN PRIVATE KEY-----]
-'', # marcador ficticio de test KMS; no contiene material de llave
+  '''^pedido-[0-9]+-[a-z]+$''',
+  '''^-----BEGIN PRIVATE KEY-----$''',
 ]
