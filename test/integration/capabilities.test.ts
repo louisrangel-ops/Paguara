@@ -19,20 +19,32 @@ after(async () => { await ctx.teardown(); });
 
 const code = (c: string) => (e: { code: string }) => e.code === c;
 
-test('un comercio nuevo nace con los defaults de plataforma; lo que no es default se pide y queda en revisión', async () => {
-  await caps.platformSetGlobal('card_international', { default_for_new: false }, 'platform:test');
+test('métodos por contrato: en producción nadie nace con métodos; en el sandbox, todos; habilitar exige el contrato', async () => {
+  // Ningún método se da solo a comercios nuevos (la BD tampoco lo permite)
+  await assert.rejects(caps.platformSetGlobal('card_international', { default_for_new: true }, 'platform:test'), code('contract_required'));
+  assert.equal((await pgError(ctx.pool.query(`UPDATE platform.capabilities SET default_for_new = true WHERE key = 'zelle'`))).code, '23514');
+
+  // En el sandbox (LIVEMODE=false) el comercio nuevo recibe todos los métodos para integrar
   const m = await ctx.merchant('acct_caps_new');
   const list = await caps.list(m);
-  const card = list.find((c) => c.key === 'card_international')!;
-  assert.equal(card.state, 'not_granted');
-  assert.equal(card.can_request, true);
-  assert.equal(list.find((c) => c.key === 'pago_movil_c2p')!.state, 'active');
+  assert.ok(list.filter((c) => c.kind === 'method').every((c) => c.state === 'active'));
   assert.equal(list.find((c) => c.key === 'payment_links')!.kind, 'module');
+  assert.ok(!list.some((c) => c.key.startsWith('settlement_')), 'los módulos de liquidación en divisas están retirados');
 
+  // Sin esa ayuda del sandbox (como en producción) el método no existe para el comercio hasta que el maestro lo habilita
+  await ctx.pool.query(`DELETE FROM merchants.capabilities WHERE merchant_id = $1 AND key = 'card_international'`, [m]);
+  const card = await caps.get(ctx.pool, m, 'card_international');
+  assert.equal(card.state, 'not_granted');
   await assert.rejects(caps.setMerchantEnabled(m, 'card_international', true, 'user:x'), code('capability_locked'));
   assert.equal((await caps.request(m, 'card_international', 'user:x')).state, 'pending_review');
-  assert.equal((await caps.platformSetForMerchant(m, 'card_international', { platform_status: 'allowed' }, 'platform:kyc')).state, 'active');
-  await caps.platformSetGlobal('card_international', { default_for_new: true }, 'platform:test');
+  await assert.rejects(caps.platformSetForMerchant(m, 'card_international', { platform_status: 'allowed' }, 'platform:maestro'), code('contract_required'));
+  await assert.rejects(caps.platformSetForMerchant(m, 'card_international', { platform_status: 'allowed', contract_ref: 'x' }, 'platform:maestro'), code('contract_ref_invalid'));
+  const ok = await caps.platformSetForMerchant(m, 'card_international', { platform_status: 'allowed', contract_ref: 'CT-2026-0042' }, 'platform:maestro');
+  assert.equal(ok.state, 'active');
+  const { rows } = await ctx.pool.query(`SELECT contract_ref FROM merchants.capabilities WHERE merchant_id = $1 AND key = 'card_international'`, [m]);
+  assert.equal(rows[0].contract_ref, 'CT-2026-0042');
+  // Los módulos no son métodos de pago: no piden contrato
+  await caps.platformSetForMerchant(m, 'webhooks', { platform_status: 'allowed' }, 'platform:maestro');
 });
 
 test('el comercio apaga un método: no se puede crear, elegir ni confirmar con él; lo ya en curso sigue', async () => {
@@ -149,55 +161,23 @@ test('la BD no acepta capacidades inventadas ni límites incoherentes', async ()
   assert.equal(e2.code, '23514');
 });
 
-test('liquidación en divisas: con el módulo apagado no se guarda la regla y el corte espera', async () => {
-  const m = await ctx.merchant('acct_caps_settle');
-  const usdt = { targetCurrency: 'USDT' as const, bps: 4000, destination: { network: 'TRON', address: 'TX' } };
-  const ves = { targetCurrency: 'VES' as const, bps: 6000, destination: { bank: '0102', account: '01020000000000000000' } };
-  await ctx.merchants.setSettlementRules(m, 'VES', [ves, usdt]);
-
-  let pi = await ctx.payments.create(m, { amount: 10000n, currency: 'USD' });
-  pi = await ctx.payments.attachPaymentMethod(m, pi.id, 'pago_movil_c2p');
-  pi = await ctx.payments.confirm(m, pi.id, { phone: '04141234567', bank: '0102', otp: '1' });
-  await ctx.settlements.recordRailFunds('c2p_settle_1', 'ves_c2p', 'VES', [pi.id]);
-
-  await caps.platformSetForMerchant(m, 'settlement_usdt', { platform_status: 'blocked' }, 'platform:cumplimiento');
-  await assert.rejects(ctx.merchants.setSettlementRules(m, 'VES', [ves, usdt]), code('feature_disabled'));
-  // Bolívares y la misma moneda no necesitan módulo
-  await ctx.merchants.setSettlementRules(m, 'USD', [{ targetCurrency: 'VES', bps: 10000, destination: {} }]);
-
-  const r = await ctx.settlements.runCutoff('2026-10-19-VES-caps', { sourceCurrency: 'VES' });
-  assert.deepEqual(r.skipped.filter((s) => s.merchantId === m), [{ merchantId: m, reason: 'settlement_module_disabled' }]);
-  assert.equal((await ctx.payments.retrieve(m, pi.id)).status, 'succeeded'); // sigue esperando, no se pierde
-
-  await caps.platformSetForMerchant(m, 'settlement_usdt', { platform_status: 'allowed' }, 'platform:cumplimiento');
-  await withTransaction(ctx.pool, (c) => ctx.ledger.post(c, {
-    idempotencyKey: 'treasury:usdt:caps', kind: 'capital_contribution', description: 'Aporte de capital en USDT (prueba)',
-    lines: [
-      { accountCode: 'platform:cash:USDT', currency: 'USDT', amount: 1_000_000_000n },
-      { accountCode: 'platform:fx_position:USDT', currency: 'USDT', amount: -1_000_000_000n },
-    ],
-  }));
-  const r2 = await ctx.settlements.runCutoff('2026-10-19-VES-caps-2', { sourceCurrency: 'VES' });
-  assert.deepEqual(r2.skipped.filter((s) => s.merchantId === m), []);
-  assert.ok(r2.payouts.some((p) => p.merchantId === m));
-});
-
 test('panel interno: bandeja de solicitudes y catálogo con conteos', async () => {
   const m = await ctx.merchant('acct_caps_inbox');
   await caps.platformSetForMerchant(m, 'banesco_panama', { platform_status: 'blocked' }, 'platform:x');
-  await ctx.pool.query(`DELETE FROM merchants.capabilities WHERE merchant_id = $1 AND key = 'settlement_usd'`, [m]);
-  await caps.request(m, 'settlement_usd', 'user:x');
+  await ctx.pool.query(`DELETE FROM merchants.capabilities WHERE merchant_id = $1 AND key = 'zelle'`, [m]);
+  await caps.request(m, 'zelle', 'user:x');
   const inbox = await caps.pendingRequests();
   const mine = inbox.find((r) => r.merchant_id === m)!;
-  assert.equal(mine.key, 'settlement_usd');
-  assert.equal(mine.name, 'Liquidar en dólares');
+  assert.equal(mine.key, 'zelle');
+  assert.equal(mine.name, 'Zelle');
   assert.equal(mine.business_name, `Comercio ${m}`);
 
   const globals = await caps.listGlobal();
   assert.equal(globals[0].key, 'pago_movil_c2p'); // orden del catálogo
-  const usd = globals.find((g) => g.key === 'settlement_usd')!;
-  assert.ok(usd.pending >= 1);
-  await caps.platformSetForMerchant(m, 'settlement_usd', { platform_status: 'allowed' }, 'platform:x');
+  assert.ok(!globals.some((g) => g.key.startsWith('settlement_')));
+  assert.ok(globals.find((g) => g.key === 'zelle')!.pending >= 1);
+  await assert.rejects(caps.platformSetGlobal('settlement_usd', { global_enabled: true }, 'platform:x'), code('resource_missing'));
+  await caps.platformSetForMerchant(m, 'zelle', { platform_status: 'allowed', contract_ref: 'CT-2026-0043' }, 'platform:x');
   assert.ok(!(await caps.pendingRequests()).some((r) => r.merchant_id === m));
 });
 

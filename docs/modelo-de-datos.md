@@ -84,7 +84,17 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 - Módulos `settlement_usdt` y `settlement_usd`, otorgados a todos los comercios existentes.
 - Índice `capabilities_pending_idx` para la bandeja de solicitudes del panel interno.
 
-Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md).
+### 010 · `010_ves_payouts_operators.sql` — Liquidación en bolívares, operadores y doble aprobación (PR #11)
+- `merchants.settlement_rules`: la cuenta en VES de cada moneda pasa al 100 % y se borran las reglas a otras monedas; CHECK `settlement_rules_ves_only` (`target_currency = 'VES' AND bps = 10000`).
+- `settlements.payout_instructions`: CHECK `payout_instructions_ves_only` (`NOT VALID`: conserva las viejas); estado nuevo `on_hold`, que es el valor por defecto.
+- `platform.capabilities.retired_at`: `settlement_usdt` y `settlement_usd` quedan apagados, retirados y sin filas por comercio; CHECK `capabilities_retired_off`.
+- `platform.operators (id, name, role 'master'|'operator', token_hash, created_by, created_at, revoked_at)`: una persona del panel interno por fila; solo el SHA-256 del token.
+- `settlements.payouts`: `status` (`pending_approval`|`approved`), `approvals_required` (2 por defecto) y `approved_at`. Las liquidaciones anteriores quedaron `approved` con 1.
+- `settlements.payout_approvals (payout_id, operator_id)`: append-only, una aprobación por persona.
+- Triggers `payouts_guard` y `payout_instructions_guard` (`P0020`): no se aprueba sin las aprobaciones contadas, no se baja `approvals_required`, una instrucción no sale de `on_hold` sin la liquidación aprobada y nada vuelve atrás.
+- Métodos por contrato: `default_for_new = false` en todos los métodos y CHECK `capabilities_methods_by_contract`; `merchants.capabilities.contract_ref` (3 a 120 caracteres).
+
+Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md) y [liquidaciones.md](liquidaciones.md).
 
 ## Prefijos de identificadores
 
@@ -96,6 +106,7 @@ Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md).
 | `key_` | Llave API (`sk_test_`/`sk_live_`/`pk_test_`/`pk_live_` + 32 hex) | `merchants.service.ts` |
 | `usr_` | Usuario del panel | `auth.service.ts` |
 | `stb_`, `po_` | Lote y liquidación | `settlements.service.ts` |
+| `op_`, `opk_` | Operador del panel interno y su token (`opk_` + 48 hex) | `operators.service.ts` |
 | `we_`, `whsec_`, `evt_` | Endpoint, secreto y evento de webhook | `webhooks.service.ts` |
 | `plink_` | Link de pago | `dashboard.service.ts` |
 
@@ -110,4 +121,5 @@ Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md).
 | `P0005` | Modificar algo append-only o un saldo a mano | 500 `internal_error` |
 | `P0010` | Cambiar id/comercio/monto/moneda de un intent | 500 `internal_error` |
 | `P0011`, `P0012` | Transición no permitida / montos congelados | 409 `payment_intent_unexpected_state` |
+| `P0020` | Liberar o aprobar una liquidación sin las aprobaciones pedidas | 409 `payout_not_approved` |
 | `23505` en `payment_intents_rail_ref_idx` | Referencia bancaria reutilizada | 409 `rail_reference_already_used` |

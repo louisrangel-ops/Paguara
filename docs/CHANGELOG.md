@@ -9,6 +9,17 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Esquema] Migración 010: liquidación solo en VES (CHECK en reglas e instrucciones), `platform.operators`, `settlements.payouts.status/approvals_required`, `settlements.payout_approvals`, triggers `P0020`, módulos de liquidación en divisas retirados (`retired_at`) y métodos por contrato (`contract_ref`, sin `default_for_new`) (#11).
+- [Liquidaciones] Por ley se paga a los comercios solo en bolívares: lo cobrado en USD o USDT se convierte a VES en el corte; reglas con otra moneda o distintas del 100 % → 400 `settlement_currency_invalid`/`settlement_rules_invalid` (#11).
+- [Liquidaciones] Las instrucciones nacen `on_hold`; `GET /internal/payouts/pending` y `POST /internal/payouts/:id/approve` las liberan con `PAYOUT_APPROVALS_REQUIRED` personas distintas (2 por defecto) (#11).
+- [API] Operadores con token propio `opk_…` (`/internal/operators`, `/internal/whoami`), roles `master`/`operator` por ruta (403 `insufficient_role`); el token de sistema solo sirve a los workers y para crear el primer maestro; se quita `actor` del cuerpo (#11).
+- [API] Habilitar un método a un comercio exige `contract_ref` (400 `contract_required`); en el sandbox cada comercio nuevo recibe todos los métodos para integrar (#11).
+- [Seguridad] Puerto interno (`INTERNAL_PORT`) para `/internal` y `/admin` (404 en el público), cabeceras CSP/HSTS/nosniff/frame, límite de peticiones en Redis (429 `rate_limited`), secretos de webhooks cifrados con AES-256-GCM (`SECRETS_ENCRYPTION_KEY`) (#11).
+- [Rieles] Con `LIVEMODE=true` la API no arranca si queda un riel de prueba (#11).
+- [Config] `SECRETS_ENCRYPTION_KEY`, `INTERNAL_PORT`, `PAYOUT_APPROVALS_REQUIRED`, `RATE_LIMIT_*`; en live se exigen las tres primeras (#11).
+- [Web] Panel del comercio con "Cuenta de liquidación" en bolívares; panel interno con login por operador, bandeja de aprobaciones, contrato al habilitar y alta de operadores; docs públicas con la sección de pruebas (#11).
+- [Docs] Liquidaciones, ledger, modelo de datos, API, seguridad, configuración, despliegue, arquitectura y módulos por comercio actualizados (#11).
+
 - [Despliegue] `scripts/build-web.mjs` ya no acepta carpeta de salida: siempre escribe en `dist-web/`, así el borrado previo nunca toca el repo (#10).
 - [CI] El test de API keys fallaba 1 de cada 16 corridas: la llave "alterada" era idéntica cuando la original ya terminaba en `0` (#10).
 - [Despliegue] `vercel.json` y `scripts/build-web.mjs`: la web se publica en Vercel en modo demostración (sitio y checkout, sin API ni `/admin`) en `dist-web/` (#9).

@@ -7,20 +7,20 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | Documento | Contenido |
 |---|---|
 | [Arquitectura y módulos](arquitectura.md) | Procesos, módulos NestJS, flujo de un pedido, estructura del repo |
-| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–009 |
+| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–010 |
 | [Ledger y plan de cuentas](ledger.md) | Doble partida multi-moneda, cuentas, plantillas de asientos, garantías de la BD |
 | [Máquina de estados del PaymentIntent](payment-intents.md) | Estados, eventos, congelamiento de tasa, vencimiento, idempotencia |
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |
 | [Rieles y métodos de pago](metodos-de-pago.md) | Métodos, rieles, comisiones, IVA, IGTF, riel sandbox |
-| [Métodos y módulos por comercio](modulos-por-comercio.md) | Interruptores de plataforma y del comercio, precios negociados, panel interno `/admin` |
+| [Métodos y módulos por comercio](modulos-por-comercio.md) | Interruptores de plataforma y del comercio, métodos por contrato, sandbox, precios negociados, panel interno `/admin` |
 | [API y autenticación](api.md) | API v1, checkout, API interna, llaves, idempotencia, errores |
 | [API del dashboard](dashboard-api.md) | Contrato web ↔ servidor del panel del comercio |
 | [Webhooks](webhooks.md) | Outbox, eventos, firma, reintentos, protección SSRF |
-| [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote, split y spread |
+| [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote en bolívares, spread y doble aprobación |
 | [Configuración](configuracion.md) | Variables de entorno, una por una |
 | [Despliegue, pruebas y CI](despliegue.md) | Docker, Railway, migraciones, seed, dev-jobs, pruebas, CI |
 | [Web: diseño y movimiento](web.md) | Superficies web, proceso de diseño, reglas y presupuesto de las animaciones, cómo verificar un cambio visual |
-| [Seguridad](seguridad.md) | Secretos, llaves, sesiones, CSRF, límites de intentos, gitleaks |
+| [Seguridad](seguridad.md) | Secretos, llaves, sesiones, CSRF, límites de peticiones, puerto interno, operadores, gitleaks |
 | [CHANGELOG técnico](CHANGELOG.md) | Historial de cambios técnicos por PR |
 
 Otros documentos del repo: [`README.md`](../README.md) (visión general y arranque rápido),

@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import { grantSandboxMethods } from '../capabilities/capability-state';
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { Request, Response } from 'express';
@@ -79,6 +80,7 @@ export class AuthService {
         await c.query('INSERT INTO merchants.merchants (id, business_name, rif) VALUES ($1, $2, $3)', [merchantId, business, normalizedRif]);
         await c.query('INSERT INTO dashboard.users (id, merchant_id, email, name, password_hash) VALUES ($1, $2, $3, $4, $5)',
           [userId, merchantId, email, name, passwordHash]);
+        await grantSandboxMethods(c, merchantId);
       });
     } catch (e) {
       const err = e as { code?: string; constraint?: string };

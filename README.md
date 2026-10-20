@@ -24,8 +24,8 @@ docker compose up -d postgres redis
 set -a; . ./.env.development; set +a
 npm install
 npm run migrate                      # aplica db/migrations/*.sql
-npm test                             # 23 pruebas unitarias
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:integration   # 31 pruebas contra PostgreSQL real
+npm test                             # 29 pruebas unitarias
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:integration   # 44 pruebas contra PostgreSQL real
 npm run build && npm start           # en otras terminales: npm run dev:jobs y npm run seed
 ```
 
@@ -77,7 +77,7 @@ cancel: desde requires_payment_method, requires_confirmation o requires_action
 | riel | Se llama fuera de la transacción. Timeout = el intent queda en `processing` para el reconciliador (marcarlo fallido podría duplicar un cobro). | `rails/*.ts` |
 | `succeeded` | En la **misma transacción**: asiento de captura + cambio de estado. Webhooks duplicados no duplican el asiento. | `applyRailResult` |
 | fondos recibidos | Conciliación del lote del banco: el neto pasa de "por recibir" a "disponible". | `SettlementsService.recordRailFunds` |
-| `settled` | Corte de lote: por comercio, aplica su regla de split (p. ej. 60 % VES / 40 % USDT), congela una cotización por porción convertida, cobra el spread y deja instrucciones de pago para tesorería. | `SettlementsService.runCutoff` |
+| `settled` | Corte de lote: por comercio, liquida todo en bolívares (por ley); si cobró en USD o USDT congela una cotización a VES y cobra el spread. La instrucción de pago queda retenida hasta que la aprueben dos personas del panel interno. | `SettlementsService.runCutoff` |
 
 ## Modelo contable
 
@@ -106,10 +106,7 @@ Captura          Dr rail_clearing:ves_c2p:VES  3.650,00
                  Cr tax_payable:iva:VES           −9,05   (16 % de la comisión)
 Fondos del banco Dr cash:VES 3.650,00 / Cr rail_clearing −3.650,00
                  Dr merchant pending 3.584,38 / Cr merchant available −3.584,38
-Liquidación      Dr available 1.433,75 / Cr fx_spread_revenue:VES −17,20             (40 %, spread 1,2 %)
-60/40 VES/USDT                          Cr fx_position:VES −1.416,55
-                 Dr fx_position:USDT 37,082461 / Cr cash:USDT −37,082461            (… a 38,2 Bs/USDT)
-                 Dr available 2.150,63 / Cr cash:VES −2.150,63                       (60 % en Bs, absorbe el redondeo)
+Liquidación      Dr available 3.584,38 / Cr cash:VES −3.584,38                       (100 % en Bs, sin conversión)
 ```
 
 ## Garantías que impone la base de datos (no solo la app)
@@ -190,15 +187,17 @@ GET  /v1/checkout/payment_intents/:id?client_secret=...      ← incluye payment
 POST /v1/checkout/payment_intents/:id/attach    {client_secret, payment_method_type}
 POST /v1/checkout/payment_intents/:id/confirm   {client_secret, payment_method_details}
 ```
-Internos y panel (`X-Internal-Token`): comercios y KYC (`/internal/merchants`, `/:id/status`, `/:id/api_keys`, `/:id/settlement_rules`), interruptores (`/internal/capabilities/:key` global, `/internal/merchants/:id/capabilities[/:key]` por comercio), tasas (`/internal/fx/rates`), resultado de rieles (`/internal/payment_intents/:id/rail_result`), conciliación (`/internal/rail_batches`), corte de lote (`/internal/settlement_batches`) y vencimientos (`/internal/payment_intents/expire`).
+Internos y panel (`X-Internal-Token`, solo en el puerto privado `INTERNAL_PORT`; cada persona con su token de operador y solo el maestro cambia comercios, métodos y precios): operadores (`/internal/operators`), aprobación de liquidaciones (`/internal/payouts/pending`, `/internal/payouts/:id/approve`), comercios y KYC (`/internal/merchants`, `/:id/status`, `/:id/api_keys`, `/:id/settlement_rules`), interruptores (`/internal/capabilities/:key` global, `/internal/merchants/:id/capabilities[/:key]` por comercio), tasas (`/internal/fx/rates`), resultado de rieles (`/internal/payment_intents/:id/rail_result`), conciliación (`/internal/rail_batches`), corte de lote (`/internal/settlement_batches`) y vencimientos (`/internal/payment_intents/expire`).
 
 Montos en la API como string de enteros en unidades mínimas, para no perder precisión en JavaScript. Sandbox y producción son despliegues separados (`LIVEMODE`), cada uno con su base: una llave de un ambiente es rechazada en el otro y un pago de prueba nunca toca el ledger real.
 
 ## Métodos y módulos por comercio
 
-Cada comercio enciende o apaga sus métodos de pago y módulos (links de pago, webhooks, liquidar en USDT o USD)
-dentro de lo que la plataforma le permite. Operaciones aprueba solicitudes y apaga métodos para todos desde el
-panel interno en `/admin`. La regla vive en SQL (`merchants.capability_state`, migración 008) y la usan la API, el
+Cada comercio enciende o apaga sus métodos de pago y módulos (links de pago, webhooks) dentro de lo que la
+plataforma le permite. Los métodos se trabajan bajo contrato: solo el maestro de Paguara los habilita, con la
+referencia del contrato, desde el panel interno en `/admin`. En el sandbox cada comercio nuevo los recibe todos para
+integrar su web sin esperar el contrato. A los comercios se les liquida solo en bolívares
+([docs/liquidaciones.md](docs/liquidaciones.md)). La regla vive en SQL (`merchants.capability_state`, migración 008) y la usan la API, el
 checkout, el panel y el outbox de webhooks. Diseño, estados, errores y endpoints en
 [docs/modulos-por-comercio.md](docs/modulos-por-comercio.md).
 

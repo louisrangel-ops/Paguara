@@ -19,7 +19,7 @@ test('la tabla de transiciones en SQL es idéntica a la máquina de estados en T
   assert.deepEqual(sql, ts);
 });
 
-test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV congelada, liquidación 60 % VES / 40 % USDT', async () => {
+test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV congelada, liquidación en bolívares retenida hasta aprobarla', async () => {
   const { payments, settlements, ledger, pool } = ctx;
 
   let pi = await payments.create('m_1', { amount: 10000n, currency: 'USD' }); // 100,00 USD
@@ -52,10 +52,16 @@ test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV con
   const frozen = await pgError(pool.query(`UPDATE payments.payment_intents SET fx_rate = 40, charge_amount = 400000 WHERE id = $1`, [pi.id]));
   assert.equal(frozen.code, 'P0012');
 
-  // Regla de split del comercio: 60 % a su cuenta en Bs, 40 % a su wallet TRC-20
-  await ctx.merchants.setSettlementRules('m_1', 'VES', [
+  // Por ley se liquida en bolívares: una sola cuenta en Bs al 100 %
+  await assert.rejects(ctx.merchants.setSettlementRules('m_1', 'VES', [
     { targetCurrency: 'VES', bps: 6000, destination: { bank: '0102', account: '01020000000000000000', rif: 'J-00000001-1' } },
     { targetCurrency: 'USDT', bps: 4000, destination: { network: 'TRON', address: 'TXYZ...' } },
+  ]), /solo en bolívares/);
+  const usdtRule = await pgError(pool.query(
+    `INSERT INTO merchants.settlement_rules (merchant_id, source_currency, target_currency, bps, destination) VALUES ('m_1', 'VES', 'USDT', 10000, '{}')`));
+  assert.equal(usdtRule.code, '23514');                       // la base tampoco lo acepta
+  await ctx.merchants.setSettlementRules('m_1', 'VES', [
+    { targetCurrency: 'VES', bps: 10000, destination: { bank: '0102', account: '01020000000000000000', rif: 'J-00000001-1' } },
   ]);
 
   // Un corte antes de que el banco acredite no liquida nada
@@ -67,27 +73,15 @@ test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV con
   assert.equal(await ledger.balance('merchant:m_1:pending:VES'), 0n);
   assert.equal(await ledger.balance('merchant:m_1:available:VES'), 358438n);
 
-  // Tesorería tiene USDT para pagar la porción convertida
-  await fundUsdtTreasury(1_000_000_000n);
-
   const cut = await settlements.runCutoff('2026-10-16-VES-1800', { sourceCurrency: 'VES', spreadBps: 120 });
   assert.equal(cut.payouts.length, 1);
-  const [usdt, ves] = cut.payouts[0].legs;                     // la porción en Bs va de última y absorbe el redondeo
-  assert.equal(ves.amount, 215063n);                          // 60 % → 2.150,63 Bs
-  assert.equal(usdt.sourceAmount, 143375n);                   // 40 % → 1.433,75 Bs …
-  assert.equal(usdt.spread, 1720n);                           // … menos 1,2 % de spread (17,20 Bs) …
-  assert.equal(usdt.amount, 37_082_461n);                     // … 1.416,55 / 38,2 = 37,082461 USDT
+  assert.deepEqual(cut.payouts[0].legs.map((l) => [l.currency, l.amount, l.spread]), [['VES', 358438n, 0n]]); // sin conversión: sin spread
   assert.equal(await ledger.balance('merchant:m_1:available:VES'), 0n);
-  assert.equal(await ledger.balance('platform:cash:VES'), 365000n - 215063n);
-  assert.equal(await ledger.balance('platform:fx_spread_revenue:VES'), 1720n);
-  assert.equal(await ledger.balance('platform:fx_position:VES'), 141655n);   // VES que la tesorería conserva
-  assert.equal(await ledger.balance('platform:fx_position:USDT'), 1_000_000_000n - 37_082_461n); // aporte − USDT entregado
-  assert.equal(await ledger.balance('platform:cash:USDT'), 1_000_000_000n - 37_082_461n);
+  assert.equal(await ledger.balance('platform:cash:VES'), 365000n - 358438n);
 
-  const instr = await pool.query<{ currency: string; amount: bigint; destination: { network?: string } }>(
-    `SELECT currency, amount, destination FROM settlements.payout_instructions WHERE payout_id = $1 ORDER BY currency`, [cut.payouts[0].payoutId]);
-  assert.deepEqual(instr.rows.map((r) => [r.currency, r.amount]), [['USDT', 37_082_461n], ['VES', 215063n]]);
-  assert.equal(instr.rows[0].destination.network, 'TRON');
+  const instr = await pool.query<{ currency: string; amount: bigint; status: string }>(
+    `SELECT currency, amount, status FROM settlements.payout_instructions WHERE payout_id = $1 ORDER BY currency`, [cut.payouts[0].payoutId]);
+  assert.deepEqual(instr.rows.map((r) => [r.currency, r.amount, r.status]), [['VES', 358438n, 'on_hold']]); // retenida hasta aprobarla
 
   // Repetir el mismo corte no liquida dos veces
   const again = await settlements.runCutoff('2026-10-16-VES-1800', { sourceCurrency: 'VES' });
@@ -110,17 +104,6 @@ test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV con
   assert.equal((await pool.query('SELECT * FROM ledger.trial_balance WHERE total <> 0')).rowCount, 0);
   assert.equal((await pool.query('SELECT * FROM ledger.balance_drift')).rowCount, 0);
 });
-
-async function fundUsdtTreasury(amount: bigint) {
-  const { withTransaction } = await import('../../src/database/database');
-  await withTransaction(ctx.pool, (c) => ctx.ledger.post(c, {
-    idempotencyKey: `treasury:usdt:${amount}`, kind: 'capital_contribution', description: 'Aporte de capital en USDT (prueba)',
-    lines: [
-      { accountCode: 'platform:cash:USDT', currency: 'USDT', amount },
-      { accountCode: 'platform:fx_position:USDT', currency: 'USDT', amount: -amount },
-    ],
-  }));
-}
 
 test('Pago Móvil P2P: requires_action con instrucciones; el matcher confirma después', async () => {
   let pi = await ctx.payments.create('m_2', { amount: 2500n, currency: 'USD' });

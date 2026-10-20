@@ -642,13 +642,13 @@
         ['bank', 'Débito inmediato', 'Cargo directo a la cuenta del cliente en bancos nacionales.'],
         ['card', 'Tarjetas nacionales', 'Débito y crédito emitidas en Venezuela.'],
       ]],
-      ['USD', 'Dólares', 'Quedan en tu saldo en dólares, sin pasar por el cambio.', [
+      ['USD', 'Dólares', 'Se te liquidan en bolívares a la tasa BCV del corte.', [
         ['globe', 'Tarjetas internacionales', 'Visa, Mastercard y Amex emitidas fuera del país.'],
         ['swap', 'Zelle', 'Le mostramos al cliente el correo y el concepto exactos.'],
         ['tower', 'Banesco Panamá', 'Transferencias en dólares entre cuentas de Banesco Panamá.'],
         ['cash', 'Efectivo en dólares', 'En taquillas aliadas, con el IGTF incluido en el monto.'],
       ]],
-      ['USDT', 'USDT', 'Con QR y monto exacto, y también puedes liquidar en USDT.', [
+      ['USDT', 'USDT', 'Con QR y monto exacto en la red que elija tu cliente.', [
         ['coin', 'USDT en TRC-20', 'Por la red de TRON, la más usada en Venezuela.'],
         ['coin', 'USDT en Polygon', 'Comisiones de red más bajas para montos pequeños.'],
       ]],
@@ -675,7 +675,7 @@
       ['Creas el pago', 'requires_payment_method', 'Desde tu servidor, con el precio en dólares o en bolívares, o con un link de pago desde el panel.'],
       ['Tu cliente elige y paga', 'processing', 'Ve el monto en su moneda. La tasa se congela en cuanto confirma.'],
       ['El banco confirma', 'succeeded', 'Te avisamos por webhook firmado y el pago aparece en tu panel.'],
-      ['Recibes tu dinero', 'settled', 'Liquidamos tu saldo según tu regla: todo en bolívares o repartido entre Bs y USDT.'],
+      ['Recibes tu dinero', 'settled', 'Liquidamos tu saldo en bolívares a tu cuenta en un banco nacional, como manda la ley.'],
     ];
     const steps = el('section', { class: 'section', 'aria-labelledby': 'how-h' }, [el('div', { class: 'wrap' }, [
       el('div', { class: 'section-head', 'data-rv': '' }, [
@@ -736,16 +736,16 @@
     const split = el('section', { class: 'section', 'aria-labelledby': 'split-h' }, [el('div', { class: 'wrap' }, [
       el('div', { class: 'split-demo', 'data-rv': '' }, [
         el('div', { class: 'section-head', style: 'margin:0' }, [
-          el('h2', { id: 'split-h', text: 'Liquida en la mezcla que te sirve' }),
-          el('p', { text: 'Define qué parte de tu saldo en bolívares recibes en tu banco y qué parte en USDT. Las porciones convertidas usan la tasa del momento del corte y verás el spread de cobertura en cada liquidación.' }),
+          el('h2', { id: 'split-h', text: 'Cobra en lo que pague tu cliente, recibe bolívares' }),
+          el('p', { text: 'Por ley te liquidamos en bolívares. Lo que cobras en dólares o USDT se convierte en el corte a la tasa del momento, y cada liquidación te muestra la tasa y el spread de cobertura.' }),
         ]),
         el('div', {}, [
-          el('div', { class: 'split-bar', role: 'img', 'aria-label': 'Regla de ejemplo: 60 % en bolívares y 40 % en USDT' }, [el('span', { class: 'a', text: '60 % Bs' }), el('span', { class: 'b', text: '40 % USDT' })]),
+          el('div', { class: 'split-bar', role: 'img', 'aria-label': 'Ejemplo: un saldo en dólares liquidado completo en bolívares' }, [el('span', { class: 'b', text: 'Saldo en $' }), el('span', { class: 'a', text: 'Todo en Bs' })]),
           el('dl', { class: 'split-lines' }, [
-            el('div', {}, [el('dt', { text: 'Saldo disponible' }), el('dd', {}, [money(ex.net, 'VES')])]),
-            el('div', {}, [el('dt', { text: 'A tu cuenta en Bs' }), el('dd', {}, [money('215063', 'VES')])]),
-            el('div', {}, [el('dt', { text: 'Convertido a USDT a 38,20' }), el('dd', {}, [money('37082461', 'USDT')])]),
-            el('div', {}, [el('dt', { text: 'Spread de 1,2 % sobre la porción convertida' }), el('dd', {}, [money('1720', 'VES')])]),
+            el('div', {}, [el('dt', { text: 'Saldo disponible en dólares' }), el('dd', {}, [money('10000', 'USD')])]),
+            el('div', {}, [el('dt', { text: 'Spread de 1,2 % por la conversión' }), el('dd', {}, [money('120', 'USD')])]),
+            el('div', {}, [el('dt', { text: 'Convertido a tasa BCV de 36,50' }), el('dd', {}, [money('360620', 'VES')])]),
+            el('div', {}, [el('dt', { text: 'A tu cuenta en un banco nacional' }), el('dd', {}, [money('360620', 'VES')])]),
           ]),
         ]),
       ]),
@@ -916,10 +916,14 @@
           [code('action_expired'), '402', ERRORS.action_expired],
           [code('bank_unavailable'), '503', ERRORS.bank_unavailable],
           [code('resource_missing'), '404', 'No existe ese pago, o no es de tu cuenta.'],
+          [code('payment_method_not_allowed'), '400', 'Ese método no está habilitado en tu cuenta (en producción se habilita con su contrato).'],
+          [code('rate_limited'), '429', 'Demasiadas peticiones en un minuto. Espera los segundos de Retry-After y reintenta.'],
         ], 'Códigos de error'),
         P('Los rechazos del banco no son errores HTTP de la confirmación: el pago vuelve a ', code('requires_payment_method'), ' con ', code('last_payment_error'), ' y el cliente puede reintentar con otro método.'),
       ]),
       sec('pruebas', 'Pruebas', [
+        P('El entorno de pruebas es un despliegue aparte de producción, con su propia dirección y su propia base de datos. Regístrate ahí, toma tus llaves ', code('sk_test_'), ' y ', code('pk_test_'), ' en Desarrolladores y prueba la integración completa: crear el pago, el checkout, los webhooks y los rechazos. En pruebas tu cuenta tiene todos los métodos encendidos desde el primer día, sin contrato ni KYC.'),
+        P('En producción cada método de pago se habilita cuando firmas su contrato con ', BRAND.name, '. Hasta entonces aparece como "No habilitado" en Métodos de pago y la API responde ', code('payment_method_not_allowed'), '.'),
         P('Con llaves ', code('sk_test_'), ' todos los bancos están simulados. Para probar rechazos en Pago Móvil C2P usa estos teléfonos:'),
         simpleTable(['Teléfono termina en', 'Resultado'], [
           [code('0002'), 'Fondos insuficientes (insufficient_funds)'],
@@ -927,6 +931,7 @@
           ['Cualquier otro', 'Pago aprobado'],
         ], 'Valores de prueba'),
         P('Las transferencias (Pago Móvil P2P, Zelle, USDT, efectivo) quedan en ', code('requires_action'), ' hasta que el sandbox simula la llegada del dinero. Desde ', el('a', { href: '#/dashboard/desarrolladores?tab=webhooks', text: 'Desarrolladores' }), ' puedes enviar un evento de prueba a tu endpoint.'),
+        P('Límite de peticiones: 600 por minuto por llave en la API y 120 por minuto por IP en el checkout. Si te pasas, la respuesta es ', code('429 rate_limited'), ' con la cabecera ', code('Retry-After'), ' en segundos.'),
       ]),
     ]);
     main.replaceChildren(el('div', { class: 'wrap docs' }, [nav, body]));
@@ -1443,9 +1448,9 @@
   // ---------------------------------------------------------------------------
   // Panel: Saldos, liquidaciones y reglas
   // ---------------------------------------------------------------------------
-  const PO_STATUS = { pending: ['Pendiente', 'warn'], sent: ['Enviada', 'note'], paid: ['Pagada', 'ok'], failed: ['Fallida', 'bad'] };
+  const PO_STATUS = { on_hold: ['En aprobación', 'note'], pending: ['Por enviar', 'warn'], sent: ['Enviada', 'note'], confirmed: ['Pagada', 'ok'], paid: ['Pagada', 'ok'], failed: ['Fallida', 'bad'] };
   function bankName(code) { const b = BANKS.find(([c]) => c === code); return b ? b[1] : code; }
-  // Destino de liquidación: bank_ves {bank, account, holder}, bank_usd {bank, account, holder}, usdt_trc20 {address}
+  // Destino de liquidación: bank_ves {bank, account, holder} (por ley, siempre en bolívares); los demás tipos solo aparecen en liquidaciones viejas
   function destText(d) {
     if (!d) return '';
     if (typeof d === 'string') return d;
@@ -1503,120 +1508,59 @@
     if (hl) { const n = $('po-' + hl); if (n) requestAnimationFrame(() => { n.scrollIntoView({ block: 'center' }); n.focus({ preventScroll: true }); }); }
   };
 
+  /** Cuenta en bolívares a la que se liquida lo cobrado en cada moneda (por ley, todo se paga en Bs). */
   function rulesEditor(allRules, tok) {
     const SRC = ['VES', 'USD', 'USDT'];
     let src = 'VES';
-    let rows = [];
-    let rseq = 0;
-    let sumEl = null;
-    const load = () => { rows = (allRules[src] || []).map((x) => ({ k: ++rseq, cur: x.target_currency, pct: pct(x.bps).replace(' %', ''), dest: Object.assign({}, x.destination) })); if (!rows.length) rows = [blank('VES')]; };
-    const blank = (cur) => ({ k: ++rseq, cur, pct: '', dest: cur === 'USDT' ? { type: 'usdt_trc20' } : { type: cur === 'VES' ? 'bank_ves' : 'bank_usd', bank: cur === 'VES' ? '0134' : '', holder: state.session.merchant.business_name } });
     const tabs = SRC.map((c) => el('button', { type: 'button', 'aria-pressed': String(c === src), text: 'Cobros en ' + SYMBOL[c] }));
-    tabs.forEach((b, i) => b.addEventListener('click', () => { src = SRC[i]; tabs.forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); load(); draw(); }));
+    tabs.forEach((b, i) => b.addEventListener('click', () => { src = SRC[i]; tabs.forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); draw(); }));
     const formSlot = el('div');
     const card = el('section', { class: 'card', 'aria-labelledby': 'ru-h' }, [
-      el('div', { class: 'card-head' }, [el('h2', { id: 'ru-h', text: 'Reglas de liquidación' }), el('div', { class: 'seg', role: 'group', 'aria-label': 'Moneda de origen' }, tabs)]),
-      el('p', { class: 'muted', text: 'Cómo repartimos tu saldo disponible en cada corte. Las porciones en otra moneda se convierten con la tasa del momento y un spread de cobertura que verás en cada liquidación.' }),
+      el('div', { class: 'card-head' }, [el('h2', { id: 'ru-h', text: 'Cuenta de liquidación' }), el('div', { class: 'seg', role: 'group', 'aria-label': 'Moneda cobrada' }, tabs)]),
+      el('p', { class: 'muted', text: 'Por ley te pagamos en bolívares a una cuenta en un banco nacional. Lo que cobras en dólares o USDT se convierte en el corte a la tasa del momento, con un spread de cobertura que verás en cada liquidación.' }),
       formSlot,
     ]);
     function draw(errMsg) {
-      const form = el('form', { class: 'form', novalidate: true, 'aria-label': 'Reglas para cobros en ' + SYMBOL[src] });
-      const list = rows.map((row, idx) => {
-        const n = idx + 1;
-        const pre = 'r' + row.k;
-        const curSel = el('select', { id: pre + '-cur' }, ['VES', 'USD', 'USDT'].map((c) => el('option', { value: c, text: SYMBOL[c], selected: c === row.cur })));
-        curSel.addEventListener('change', () => { sync(form); const nr = blank(curSel.value); row.cur = nr.cur; row.dest = nr.dest; draw(); $(pre + '-cur').focus(); });
-        const pctIn = el('input', { id: pre + '-pct', inputmode: 'decimal', autocomplete: 'off', value: row.pct, 'data-k': 'pct', placeholder: '60…' });
-        pctIn.addEventListener('input', () => { row.pct = pctIn.value; updateSum(); });
-        const destFields = [];
-        const holderF = () => field({ id: pre + '-holder', label: 'Titular', attrs: { 'data-d': 'holder', autocomplete: 'off', value: row.dest.holder || '', placeholder: state.session.merchant.business_name + '…' } });
-        if (row.cur === 'VES') {
-          destFields.push(field({ id: pre + '-bank', label: 'Banco', input: el('select', { id: pre + '-bank', 'data-d': 'bank' }, BANKS.map(([c, nm]) => el('option', { value: c, text: nm + ' (' + c + ')', selected: c === (row.dest.bank || row.dest.bank_code) }))) }));
-          destFields.push(field({ id: pre + '-acct', label: 'Número de cuenta', attrs: { 'data-d': 'account', inputmode: 'numeric', autocomplete: 'off', translate: 'no', value: row.dest.account || row.dest.account_number || '', placeholder: '20 dígitos…' } }));
-          destFields.push(holderF());
-        } else if (row.cur === 'USD') {
-          destFields.push(field({ id: pre + '-bname', label: 'Banco', attrs: { 'data-d': 'bank', autocomplete: 'off', value: row.dest.bank || row.dest.bank_name || '', placeholder: 'Banesco Panamá…' } }));
-          destFields.push(field({ id: pre + '-acct', label: 'Número de cuenta', attrs: { 'data-d': 'account', inputmode: 'numeric', autocomplete: 'off', translate: 'no', value: row.dest.account || row.dest.account_number || '', placeholder: '201800012345…' } }));
-          destFields.push(holderF());
-        } else {
-          destFields.push(field({ id: pre + '-addr', label: 'Dirección USDT (TRC-20)', attrs: { 'data-d': 'address', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', translate: 'no', value: row.dest.address || '', placeholder: 'T…' } }));
-        }
-        const rm = rows.length > 1 ? el('button', { class: 'btn danger-ghost sm', type: 'button', text: 'Quitar', 'aria-label': 'Quitar el destino ' + n, onclick: () => { sync(form); rows.splice(idx, 1); draw(); const f = form.isConnected ? null : formSlot.querySelector('select'); if (f) f.focus(); } }) : null;
-        return el('fieldset', { class: 'rule-row', 'data-row': String(idx) }, [
-          el('legend', { class: 'sr-only', text: 'Destino ' + n }),
-          field({ id: pre + '-cur', label: 'Recibes en', input: curSel }),
-          field({ id: pre + '-pct', label: 'Porcentaje', input: pctIn, wrap: (i) => el('div', { class: 'pct' }, [i]) }),
-          el('div', { class: 'dest' }, destFields),
-          rm,
+      const cur = (allRules[src] || []).find((x) => x.target_currency === 'VES');
+      const dest = Object.assign({ bank: '0134', holder: state.session.merchant.business_name }, cur ? cur.destination : {});
+      const form = el('form', { class: 'form', novalidate: true, 'aria-label': 'Cuenta para cobros en ' + SYMBOL[src] });
+      const bank = el('select', { id: 'ru-bank' }, BANKS.map(([c, nm]) => el('option', { value: c, text: nm + ' (' + c + ')', selected: c === (dest.bank || dest.bank_code) })));
+      const acct = el('input', { id: 'ru-acct', inputmode: 'numeric', autocomplete: 'off', translate: 'no', value: dest.account || dest.account_number || '', placeholder: '20 dígitos…' });
+      const holder = el('input', { id: 'ru-holder', autocomplete: 'off', value: dest.holder || '', placeholder: state.session.merchant.business_name + '…' });
+      const err = el('div', {}, errMsg ? [errorBanner({ message: errMsg }, 'Revisa la cuenta')] : []);
+      const save = el('button', { class: 'btn', type: 'submit', text: 'Guardar cuenta' });
+      form.append(
+        ...[
+          el('div', { class: 'rule-row' }, [
+            field({ id: 'ru-bank', label: 'Banco', input: bank }),
+            field({ id: 'ru-acct', label: 'Número de cuenta', input: acct }),
+            field({ id: 'ru-holder', label: 'Titular', input: holder }),
+          ]),
+          cur ? null : el('p', { class: 'small muted', text: 'Aún no tienes cuenta para estos cobros: el corte los guarda hasta que la registres. Tu saldo no se pierde.' }),
+          err, el('div', {}, [save]),
+        ].filter(Boolean),
+      );
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.replaceChildren();
+        const ok = validate([
+          [acct, (v) => { const s = v.replace(/[\s-]/g, ''); return !/^\d{20}$/.test(s) ? 'La cuenta debe tener 20 dígitos.' : (s.slice(0, 4) !== bank.value ? 'La cuenta debe empezar por el código del banco (' + bank.value + ').' : null); }],
+          [holder, (v) => (v.trim().length >= 3 ? null : 'Escribe el titular de la cuenta.')],
         ]);
+        if (!ok) return;
+        const body = { rules: [{ target_currency: 'VES', bps: 10000, destination: { type: 'bank_ves', bank: bank.value, account: acct.value.replace(/[\s-]/g, ''), holder: holder.value.trim() } }] };
+        setBusy(save, true, 'Guardando…');
+        try {
+          const res = await api.put('/settlement_rules/' + src, body);
+          if (!alive(tok)) return;
+          Object.assign(allRules, res.rules);
+          draw();
+          toast('Cuenta para cobros en ' + SYMBOL[src] + ' guardada');
+        } catch (ex) { setBusy(save, false); err.replaceChildren(errorBanner(ex, 'No pudimos guardar la cuenta')); }
       });
-      const sumOut = el('span', { id: 'rules-sum' });
-      sumEl = sumOut;
-      const err = el('div', {}, errMsg ? [errorBanner({ message: errMsg }, 'Revisa la regla')] : []);
-      const add = rows.length < 3 ? el('button', { class: 'btn ghost sm', type: 'button', text: 'Agregar destino', onclick: () => { sync(form); const used = rows.map((x) => x.cur); rows.push(blank(['VES', 'USDT', 'USD'].find((c) => !used.includes(c)) || 'USDT')); draw(); const ins = formSlot.querySelectorAll('[data-k=pct]'); ins[ins.length - 1].focus(); } }) : null;
-      const save = el('button', { class: 'btn', type: 'submit', text: 'Guardar regla' });
-      form.append(...list, el('div', { class: 'sum-line' }, [sumOut, add]), err, el('div', {}, [save]));
-      form.addEventListener('submit', (e) => onSave(e, form, save, err));
       formSlot.replaceChildren(form);
-      updateSum();
     }
-    function sync(form) {
-      form.querySelectorAll('fieldset[data-row]').forEach((fs) => {
-        const row = rows[Number(fs.dataset.row)];
-        if (!row) return;
-        row.pct = fs.querySelector('[data-k=pct]').value;
-        fs.querySelectorAll('[data-d]').forEach((i) => { row.dest[i.dataset.d] = i.value.trim(); });
-      });
-    }
-    function total() { return rows.reduce((s, x) => s + (parseBps(x.pct) || 0), 0); }
-    function updateSum() {
-      const o = sumEl;
-      if (!o) return;
-      const t = total();
-      o.className = t === 10000 ? 'total-ok' : 'total-bad';
-      o.replaceChildren('Suma: ', el('span', { class: 'num', text: pct(t) }), t === 10000 ? '' : ' (debe ser 100 %)');
-    }
-    async function onSave(e, form, btn, err) {
-      e.preventDefault();
-      sync(form);
-      err.replaceChildren();
-      const checks = [];
-      form.querySelectorAll('fieldset[data-row]').forEach((fs) => {
-        checks.push([fs.querySelector('[data-k=pct]'), (v) => { const b = parseBps(v); return b && b > 0 && b <= 10000 ? null : 'Escribe un porcentaje entre 0,01 y 100.'; }]);
-        fs.querySelectorAll('[data-d]').forEach((i) => {
-          const k = i.dataset.d;
-          if (k === 'account') checks.push([i, (v) => { const s = v.replace(/[\s-]/g, ''); return fs.querySelector('select[data-d=bank]') ? (/^\d{20}$/.test(s) ? null : 'La cuenta debe tener 20 dígitos.') : (/^\d{6,34}$/.test(s) ? null : 'Escribe el número de cuenta, solo dígitos.'); }]);
-          if (k === 'bank') checks.push([i, (v) => (v.trim() ? null : 'Escribe el nombre del banco.')]);
-          if (k === 'holder') checks.push([i, (v) => (v.trim().length >= 3 ? null : 'Escribe el titular de la cuenta.')]);
-          if (k === 'address') checks.push([i, (v) => (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(v.trim()) ? null : 'La dirección TRC-20 empieza con T y tiene 34 caracteres.')]);
-        });
-      });
-      if (!validate(checks)) return;
-      const t = total();
-      if (t !== 10000) {
-        err.replaceChildren(errorBanner({ message: 'Los porcentajes suman ' + pct(t) + '. Deben sumar exactamente 100 %.' }, 'Revisa la regla'));
-        const first = form.querySelector('[data-k=pct]');
-        rows.forEach((_, i) => { const inp = form.querySelectorAll('[data-k=pct]')[i]; inp.setAttribute('aria-invalid', 'true'); inp.setAttribute('aria-describedby', 'rules-sum'); });
-        first.focus();
-        return;
-      }
-      const body = { rules: rows.map((x) => {
-        const d = { type: x.dest.type };
-        const keep = d.type === 'usdt_trc20' ? ['address'] : ['bank', 'account', 'holder'];
-        keep.forEach((k) => { if (x.dest[k] != null) d[k] = String(x.dest[k]).trim(); });
-        if (d.account) d.account = d.account.replace(/[\s-]/g, '');
-        return { target_currency: x.cur, bps: parseBps(x.pct), destination: d };
-      }) };
-      setBusy(btn, true, 'Guardando…');
-      try {
-        const res = await api.put('/settlement_rules/' + src, body);
-        if (!alive(tok)) return;
-        Object.assign(allRules, res.rules);
-        load(); draw();
-        toast('Regla para cobros en ' + SYMBOL[src] + ' guardada');
-      } catch (ex) { setBusy(btn, false); err.replaceChildren(errorBanner(ex, 'No pudimos guardar la regla')); }
-    }
-    load(); draw();
+    draw();
     return card;
   }
 
@@ -1723,15 +1667,13 @@
   };
   const CAP_HINT = {
     pending_review: 'Lo estamos revisando. Te avisaremos al correo de la cuenta.',
-    not_granted: 'No viene incluido en tu cuenta. Pídelo y lo revisamos.',
+    not_granted: 'Se habilita al firmar su contrato con ' + BRAND.name + '. Pídelo y te contactamos.',
     blocked: 'Escríbenos para saber por qué y cómo reactivarlo.',
     unavailable: 'Está apagado para todos los comercios mientras resolvemos una falla con el banco o el proveedor.',
   };
   const MODULE_INFO = {
     payment_links: 'Enlaces fijos para cobrar por WhatsApp o Instagram sin programar.',
     webhooks: 'Avisos firmados a tu servidor cuando cambia un pago. Apagado, los eventos se guardan pero no se envían.',
-    settlement_usdt: 'Recibir parte de tus liquidaciones en USDT. Apagado, el corte espera hasta que cambies la regla de liquidación.',
-    settlement_usd: 'Recibir parte de tus liquidaciones en dólares (Panamá o EE. UU.). Apagado, el corte espera hasta que cambies la regla.',
   };
   const canManage = () => ['owner', 'admin'].includes((state.session.user || {}).role || 'owner');
   function feeText(c) {

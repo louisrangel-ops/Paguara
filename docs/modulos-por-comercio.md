@@ -1,14 +1,19 @@
 # Métodos de pago y módulos por comercio
 
 Cada comercio decide qué métodos de pago ofrece y qué módulos del producto usa, dentro de lo que la plataforma
-le permite. Introducido en la migración `008_capabilities.sql`; los módulos de liquidación llegaron en
-`009_settlement_modules_admin.sql`.
+le permite. Introducido en la migración `008_capabilities.sql`. La `010_ves_payouts_operators.sql` hizo que los
+métodos se habiliten solo por contrato y retiró los módulos de liquidación en divisas (a los comercios se les paga
+solo en bolívares, ver [liquidaciones.md](liquidaciones.md)).
 
 ## Dos capas
 
 1. **Plataforma (Paguara)**: decide qué existe y a quién se le habilita.
    - `platform.capabilities.global_enabled`: interruptor de emergencia para todos (riel caído, banco sin convenio).
-   - `platform.capabilities.default_for_new`: si cada comercio nuevo lo recibe al registrarse.
+   - `platform.capabilities.default_for_new`: si cada comercio nuevo lo recibe al registrarse. **Solo módulos**: un
+     método nunca se da solo (CHECK `capabilities_methods_by_contract`), porque habilitarlo exige un contrato firmado.
+   - **Métodos por contrato**: solo el maestro de Paguara habilita un método a un comercio, y debe indicar la referencia
+     del contrato (`contract_ref`, 3 a 120 caracteres; sin ella, 400 `contract_required`). Bloquear o negociar precio
+     no la exige.
    - `merchants.capabilities.platform_status`: `allowed`, `pending_review` o `blocked` para un comercio.
    - Precio y límites negociados por comercio: `fee_bps`, `fee_fixed_usd`, `min_amount`, `max_amount`.
 2. **Comercio**: enciende o apaga (`merchant_enabled`) lo que la plataforma le permitió.
@@ -18,7 +23,18 @@ Capacidades (`key`):
 | Tipo | Llaves |
 |---|---|
 | Método (`method`) | `pago_movil_c2p`, `pago_movil_p2p`, `debito_inmediato`, `card_national`, `card_international`, `zelle`, `banesco_panama`, `usdt_trc20`, `usdt_polygon`, `cash` |
-| Módulo (`module`) | `payment_links`, `webhooks`, `settlement_usdt` (convertir liquidaciones a USDT), `settlement_usd` (convertir liquidaciones a USD) |
+| Módulo (`module`) | `payment_links`, `webhooks` |
+
+`settlement_usdt` y `settlement_usd` siguen en el catálogo con `retired_at` (la auditoría los referencia), apagados y
+fuera de todos los listados.
+
+## Entorno de pruebas (sandbox)
+
+Para que los comercios integren su web sin esperar el contrato, en una instancia con `LIVEMODE` distinto de `true`
+cada comercio nuevo (registro en la web o `POST /internal/merchants`) recibe todos los métodos habilitados globalmente,
+con `updated_by = 'platform:sandbox'` (`grantSandboxMethods` en `src/capabilities/capability-state.ts`). Allí todos
+los rieles son de prueba y no mueven dinero. En producción (`LIVEMODE=true`) eso no ocurre: el comercio pide el
+método desde su panel y el maestro lo habilita al firmar el contrato.
 
 ## Estado efectivo
 
@@ -37,10 +53,11 @@ y el outbox de webhooks.
 ## Datos
 
 - `platform.capabilities (key, kind, global_enabled, default_for_new, updated_at)`: catálogo.
-- `merchants.capabilities (merchant_id, key, platform_status, merchant_enabled, fee_bps, fee_fixed_usd, min_amount, max_amount, updated_by, updated_at)`.
+- `merchants.capabilities (merchant_id, key, platform_status, merchant_enabled, contract_ref, fee_bps, fee_fixed_usd, min_amount, max_amount, updated_by, updated_at)`.
+  `contract_ref` es la referencia del contrato con que se habilitó el método (los habilitados antes de la 010 no la tienen).
   `min_amount` y `max_amount` están en unidades mínimas de la moneda de cobro del método (VES para Pago Móvil, USDT para USDT).
 - `merchants.capability_changes`: auditoría append-only (quién, cuándo, antes y después). `merchant_id NULL` = cambio global.
-- Un trigger en `merchants.merchants` le da a cada comercio nuevo las capacidades `default_for_new`.
+- Un trigger en `merchants.merchants` le da a cada comercio nuevo las capacidades `default_for_new` (hoy solo módulos).
 - La migración le dio a cada comercio existente todas las capacidades, para que nada cambie al desplegar.
 - `payments.payment_intents.payment_method_types` y `payments.payment_links.payment_method_types` (`text[]`, `NULL` = todos los activos).
 
@@ -58,8 +75,8 @@ y el outbox de webhooks.
 | Links de pago (crear, activar, abrir `/pay/:slug`) | Módulo `payment_links` activo | 403 `feature_disabled` |
 | Webhooks (crear endpoint, activar, probar, reenviar) | Módulo `webhooks` activo | 403 `feature_disabled` |
 | Outbox de webhooks | Con el módulo apagado el evento se guarda pero no se programan entregas; las pendientes esperan a que se encienda | — |
-| Guardar una regla de liquidación que convierte a USDT o USD | Módulo `settlement_usdt` o `settlement_usd` activo. Liquidar en la misma moneda cobrada o convertir a VES no lo exige | 403 `feature_disabled` |
-| Corte de lote | Si una regla del comercio convierte a una divisa cuyo módulo está apagado, ese comercio se salta con `settlement_module_disabled` y sus pagos siguen en `succeeded` para el próximo corte | — |
+| Habilitar un método (`platform_status: 'allowed'`) | Debe traer `contract_ref` | 400 `contract_required` |
+| `default_for_new = true` en un método | Prohibido (también en la BD) | 400 `contract_required` |
 
 El precio que se cobra en `attach` es el del comercio si tiene uno negociado, si no el de `PAYMENT_METHODS`.
 
@@ -68,16 +85,18 @@ El precio que se cobra en `attach` es el del comercio si tiene uno negociado, si
 - **Panel** (`/api/dashboard/capabilities`): solo usuarios con rol `owner` o `admin` (`403 insufficient_role`).
   Página **Métodos de pago** en `#/dashboard/metodos`.
 - **API del comercio** (`sk_`): `GET /v1/account/capabilities`, `POST /v1/account/capabilities/:key {enabled}`.
-- **Panel interno** en `/admin`: bandeja de solicitudes (aprobar o rechazar), interruptores globales con cuántos
-  comercios tienen cada capacidad, y la ficha de un comercio para permitir, bloquear o fijar precio y límites.
-  La página no trae datos: el operador escribe el `INTERNAL_API_TOKEN` (queda en `sessionStorage`, se borra al cerrar
-  la pestaña) y su nombre, que va como `actor` a la auditoría. Rechazar deja la capacidad en `blocked`.
-- **Plataforma** (`X-Internal-Token`):
-  - `GET /internal/capabilities`: catálogo con `merchants_active` y `pending` por capacidad
-  - `GET /internal/capability_requests`: solicitudes en `pending_review`, las más viejas primero
-  - `POST /internal/capabilities/:key {global_enabled?, default_for_new?, actor?}`
-  - `GET /internal/merchants/:id/capabilities`
-  - `POST /internal/merchants/:id/capabilities/:key {platform_status?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?, actor?}`
+- **Panel interno** en `/admin` (solo en el puerto interno, `INTERNAL_PORT`): bandeja de solicitudes (aprobar con
+  la referencia del contrato, o rechazar), interruptores globales con cuántos comercios tienen cada capacidad, y la
+  ficha de un comercio para permitir, bloquear o fijar precio y límites. Cada persona entra con su propio token de
+  operador (`opk_…`, queda en `sessionStorage` y se borra al cerrar la pestaña); la auditoría guarda
+  `platform:<nombre>`. El token de sistema no sirve para el panel. Los operadores ven las bandejas; solo el maestro
+  cambia. Rechazar deja la capacidad en `blocked`.
+- **Plataforma** (`X-Internal-Token: opk_…`; **O** cualquier operador, **M** solo el maestro):
+  - O `GET /internal/capabilities`: catálogo con `merchants_active` y `pending` por capacidad
+  - O `GET /internal/capability_requests`: solicitudes en `pending_review`, las más viejas primero
+  - M `POST /internal/capabilities/:key {global_enabled?, default_for_new?}`
+  - O `GET /internal/merchants/:id/capabilities`
+  - M `POST /internal/merchants/:id/capabilities/:key {platform_status?, contract_ref?, fee_bps?, fee_fixed_usd?, min_amount?, max_amount?}`
     (`null` vuelve al valor de plataforma)
 
 Cada cambio de un comercio emite el webhook `account.capability.updated` con la capacidad nueva como objeto.
@@ -111,13 +130,13 @@ curl https://api.paguara.test/v1/payment_intents \
   -d '{"amount":"2500","currency":"USD","payment_method_types":["pago_movil_c2p","usdt_trc20"]}'
 ```
 
-Apagar efectivo para un comercio por riesgo, y negociarle Zelle al 1 % sin fijo:
+Apagar efectivo para un comercio por riesgo, y habilitarle Zelle por contrato al 1 % sin fijo (token del maestro):
 
 ```bash
-curl -X POST .../internal/merchants/acct_123/capabilities/cash -H "X-Internal-Token: ..." \
-  -d '{"platform_status":"blocked","actor":"riesgo"}'
-curl -X POST .../internal/merchants/acct_123/capabilities/zelle -H "X-Internal-Token: ..." \
-  -d '{"fee_bps":100,"fee_fixed_usd":0,"actor":"ventas"}'
+curl -X POST .../internal/merchants/acct_123/capabilities/cash -H "X-Internal-Token: opk_..." \
+  -d '{"platform_status":"blocked"}'
+curl -X POST .../internal/merchants/acct_123/capabilities/zelle -H "X-Internal-Token: opk_..." \
+  -d '{"platform_status":"allowed","contract_ref":"CTR-2026-0142","fee_bps":100,"fee_fixed_usd":0}'
 ```
 
 ## Decisiones

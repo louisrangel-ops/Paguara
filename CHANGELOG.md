@@ -4,7 +4,14 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 
 ## 2026-10-20
 
+### Cambiado
+- **Liquidación solo en bolívares** (migración 010), como exige la ley: lo cobrado en USD o USDT se convierte a VES en el corte y se retiran los módulos `settlement_usdt` y `settlement_usd`. Ver [docs/liquidaciones.md](docs/liquidaciones.md).
+- **Métodos por contrato**: solo el maestro de Paguara habilita un método a un comercio, con la referencia del contrato. Ver [docs/modulos-por-comercio.md](docs/modulos-por-comercio.md).
+
 ### Agregado
+- **Sandbox para integraciones**: en una instancia de prueba cada comercio nuevo recibe todos los métodos. Ver [docs/despliegue.md](docs/despliegue.md#sandbox-para-integraciones-de-comercios).
+- **Operadores y doble aprobación**: cada persona del panel interno tiene su token y rol; ninguna liquidación se paga sin dos aprobaciones. Ver [docs/seguridad.md](docs/seguridad.md).
+- **Endurecimiento**: puerto interno, cabeceras de seguridad, límite de peticiones, secretos de webhooks cifrados y arranque live sin rieles de prueba. Ver [docs/seguridad.md](docs/seguridad.md).
 - **Web en Vercel** en modo demostración: `vercel.json` y `scripts/build-web.mjs`. Ver [docs/despliegue.md](docs/despliegue.md#vercel-web-en-modo-demostración).
 
 ### Cambiado
