@@ -16,15 +16,15 @@ Errores: `{ "error": { "code": "...", "message": "texto en español para mostrar
 | POST | /logout | — | `{ok:true}` |
 | GET | /me | — | `Session` |
 | PUT | /account | `{business_name}` | `Merchant` |
-| POST | /account/kyc | `{legal_name, representative_name, representative_id, address, phone, bank_name, bank_account}` | `Merchant` |
+| POST | /account/kyc | `{legal_name, representative_name, representative_id, address_line1, address_line2?, city, state, country_code, postal_code?, phone, support_email, business_activity, ecommerce_url, website?, statement_descriptor, bank_name, bank_account}` | `Merchant` |
 
 ```
 Session  = { user: {id, name, email, role: 'owner'|'admin'|'developer'|'viewer'}, merchant: Merchant, livemode: bool, other_mode_url: string|null,
              event_types: string[] }
 Merchant = { id, business_name, rif, status: 'pending_kyc'|'active'|'restricted'|'closed',
-             kyc_submitted_at: string|null, created }
+             kyc_submitted_at: string|null, iso8583_profile_status: 'pending'|'provisioned'|'suspended', created }
 ```
-`password` mínimo 10 caracteres. `rif` formato `J-12345678-9`.
+`password` mínimo 10 caracteres. `rif` formato `J-12345678-9`. `country_code` usa ISO 3166-1 alpha-2; `ecommerce_url` y `website` usan HTTPS. `statement_descriptor` tiene 5–22 caracteres. El onboarding no acepta datos de tarjeta; ver [Onboarding e ISO 8583](merchant-onboarding-iso8583.md).
 
 ## Inicio
 GET /overview →
