@@ -37,7 +37,7 @@ export class Iso8583AcquirerSimulator {
   private journal = new Map<string, JournalRecord>();
   private requestFingerprints = new Map<string, string>();
   constructor(readonly profile: SimulatorProfile = SIMULATOR_PROFILE) {
-    if (!/^\\d{3}$/.test(profile.currency) || profile.terminalId.length !== 8 || profile.merchantId.length !== 15)
+    if (!/^\d{3}$/.test(profile.currency) || profile.terminalId.length !== 8 || profile.merchantId.length !== 15)
       throw new Error('invalid simulator profile');
   }
   private key(stan: string, rrn: string) { return stan + ':' + rrn; }
