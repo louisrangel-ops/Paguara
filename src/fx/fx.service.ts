@@ -16,15 +16,24 @@ const MAX_RATE_AGE_SECONDS = Number(process.env.FX_MAX_RATE_AGE_SECONDS ?? 6 * 3
 export class FxService {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
-  /** Registra una tasa observada (job que lee BCV / Binance P2P, o carga manual). */
-  async recordRate(base: Currency, quote: Currency, rate: string, source: string, observedAt = new Date()): Promise<string> {
+  /** Registra una tasa observada. Para BCV se exige la fecha efectiva oficial. */
+  async recordRate(base: Currency, quote: Currency, rate: string, source: string, observedAt = new Date(), effectiveDate?: string): Promise<string> {
     parseRate(rate);
+    if (source === 'BCV' && !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate ?? '')) {
+      throw new Error('Las tasas BCV requieren effectiveDate YYYY-MM-DD');
+    }
     const res = await this.pool.query<{ id: string }>(
-      `INSERT INTO fx.rates (base_currency, quote_currency, rate, source, observed_at)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [base, quote, rate, source, observedAt],
+      `INSERT INTO fx.rates (base_currency, quote_currency, rate, source, observed_at, effective_date)
+       VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING id`,
+      [base, quote, rate, source, observedAt, effectiveDate ?? null],
     );
     return res.rows[0].id;
+  }
+
+  static venezuelaDate(now = new Date()): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(now);
   }
 
   /**
@@ -33,15 +42,28 @@ export class FxService {
    * exactamente lo que se cobra.
    */
   async freezeQuote(client: PoolClient, a: Currency, b: Currency, source: string, ttlSeconds: number): Promise<FrozenQuote> {
-    const rate = await client.query<{ id: string; base_currency: Currency; quote_currency: Currency; rate: string }>(
-      `SELECT id, base_currency, quote_currency, rate::text AS rate FROM fx.rates
-        WHERE source = $3
-          AND ((base_currency = $1 AND quote_currency = $2) OR (base_currency = $2 AND quote_currency = $1))
-          AND observed_at > now() - make_interval(secs => $4)
-        ORDER BY observed_at DESC LIMIT 1`,
-      [a, b, source, MAX_RATE_AGE_SECONDS],
-    );
-    if (rate.rowCount === 0) throw new RateUnavailableError(`No hay tasa ${source} reciente para ${a}/${b}`);
+    const isBcvUsdVes = source === 'BCV' && [a, b].includes('USD') && [a, b].includes('VES');
+    const rate = isBcvUsdVes
+      ? await client.query<{ id: string; base_currency: Currency; quote_currency: Currency; rate: string }>(
+          `SELECT id, base_currency, quote_currency, rate::text AS rate FROM fx.rates
+            WHERE source = 'BCV'
+              AND ((base_currency = $1 AND quote_currency = $2) OR (base_currency = $2 AND quote_currency = $1))
+              AND effective_date <= $3::date
+            ORDER BY effective_date DESC, observed_at DESC LIMIT 1`,
+          [a, b, FxService.venezuelaDate()],
+        )
+      : await client.query<{ id: string; base_currency: Currency; quote_currency: Currency; rate: string }>(
+          `SELECT id, base_currency, quote_currency, rate::text AS rate FROM fx.rates
+            WHERE source = $3
+              AND ((base_currency = $1 AND quote_currency = $2) OR (base_currency = $2 AND quote_currency = $1))
+              AND observed_at > now() - make_interval(secs => $4)
+            ORDER BY observed_at DESC LIMIT 1`,
+          [a, b, source, MAX_RATE_AGE_SECONDS],
+        );
+    if (rate.rowCount === 0) throw new RateUnavailableError(
+      isBcvUsdVes
+        ? `No hay tasa oficial BCV vigente para ${a}/${b} en ${FxService.venezuelaDate()}`
+        : `No hay tasa ${source} reciente para ${a}/${b}`);
     const r = rate.rows[0];
     const id = `fxq_${randomBytes(12).toString('hex')}`;
     const q = await client.query<{ expires_at: Date }>(
