@@ -32,6 +32,12 @@ npm run build && npm start           # en otras terminales: npm run dev:jobs y n
 `.env.development` no tiene secretos y relaja lo que exige HTTPS (`COOKIE_SECURE=false`, webhooks a `http://`). Para un entorno público
 parte de `.env.example`, con un `INTERNAL_API_TOKEN` propio y `COOKIE_SECURE=true`.
 
+### Publicar la web de demostración en Vercel
+
+La web (sitio, documentación, panel y checkout) se puede publicar sola, en modo demostración y sin API: en vercel.com,
+**Add New → Project**, importar este repo y **Deploy**. `vercel.json` ya trae el build (`node scripts/build-web.mjs`).
+Detalle en [docs/despliegue.md](docs/despliegue.md#vercel-web-en-modo-demostración).
+
 ### Desplegar el entorno de desarrollo en Railway
 
 1. Nuevo proyecto desde el repo de GitHub; Railway detecta el `Dockerfile` (la imagen migra y arranca la API). Healthcheck: `/health`.

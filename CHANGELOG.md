@@ -4,6 +4,9 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 
 ## 2026-10-20
 
+### Agregado
+- **Web en Vercel** en modo demostración: `vercel.json` y `scripts/build-web.mjs`. Ver [docs/despliegue.md](docs/despliegue.md#vercel-web-en-modo-demostración).
+
 ### Cambiado
 - **Rediseño de la web** con la misma paleta y logo: landing, documentación, panel, checkout y panel interno. Animaciones ligeras sin librerías que respetan `prefers-reduced-motion`. Ver [docs/web.md](docs/web.md) y [DESIGN.md](DESIGN.md).
 
