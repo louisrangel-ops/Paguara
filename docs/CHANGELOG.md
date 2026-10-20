@@ -9,6 +9,13 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Docs] Documentos legales en borrador como páginas del sitio (`#/legal/...`): términos, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable; textos en `public/assets/legal.js`. Ver [legal.md](legal.md).
+- [Esquema] Migración 011: `dashboard.legal_acceptances`, append-only, constancia de la versión aceptada con IP y navegador.
+- [API] `POST /api/dashboard/signup` exige `accept_terms: true` (400 `signup_invalid`, `param: accept_terms`) y registra la aceptación en la misma transacción.
+- [Web] Casilla de aceptación en el registro, enlaces legales en el pie del sitio y del checkout, aviso de cookies informativo (`localStorage` `paguara_cookies`).
+- [Seguridad] `GET /.well-known/security.txt` (RFC 9116) si `SECURITY_CONTACT` está definida.
+- [Config] `SECURITY_CONTACT`.
+
 - [Esquema] Migración 010: liquidación solo en VES (CHECK en reglas e instrucciones), `platform.operators`, `settlements.payouts.status/approvals_required`, `settlements.payout_approvals`, triggers `P0020`, módulos de liquidación en divisas retirados (`retired_at`) y métodos por contrato (`contract_ref`, sin `default_for_new`) (#11).
 - [Liquidaciones] Por ley se paga a los comercios solo en bolívares: lo cobrado en USD o USDT se convierte a VES en el corte; reglas con otra moneda o distintas del 100 % → 400 `settlement_currency_invalid`/`settlement_rules_invalid` (#11).
 - [Liquidaciones] Las instrucciones nacen `on_hold`; `GET /internal/payouts/pending` y `POST /internal/payouts/:id/approve` las liberan con `PAYOUT_APPROVALS_REQUIRED` personas distintas (2 por defecto) (#11).

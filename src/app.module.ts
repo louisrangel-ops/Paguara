@@ -22,6 +22,7 @@ import { DashboardAuthController, DashboardController, PublicController, SitePag
 import { DashboardService } from './dashboard/dashboard.service';
 import { HealthController } from './health.controller';
 import { OperatorsService } from './settlements/operators.service';
+import { SecurityTxtController } from './legal/security-txt.controller';
 import { WebhooksService } from './webhooks/webhooks.service';
 
 /**
@@ -42,7 +43,7 @@ export function buildRails(livemode: boolean): Map<string, RailAdapter> {
 
 @Module({
   controllers: [PaymentIntentsController, CheckoutController, AccountCapabilitiesController, CheckoutPageController, AdminPageController, InternalController,
-    DashboardAuthController, DashboardController, PublicController, SitePageController, HealthController],
+    DashboardAuthController, DashboardController, PublicController, SitePageController, HealthController, SecurityTxtController],
   providers: [
     { provide: PG_POOL, useFactory: () => createPool() },
     { provide: REDIS, useFactory: () => new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379') },

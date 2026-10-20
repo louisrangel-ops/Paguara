@@ -40,6 +40,7 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 | `src/capabilities/` | `capabilities.service.ts`, `capability-state.ts` | [Métodos y módulos por comercio](modulos-por-comercio.md): estado efectivo, precios negociados, auditoría |
 | `src/settlements/` | `settlements.service.ts`, `internal.controller.ts` | [Liquidaciones](liquidaciones.md) y la API interna |
 | `src/webhooks/` | `webhooks.service.ts` | [Webhooks](webhooks.md): outbox y worker de entrega |
+| `src/legal/` | `legal-documents.ts`, `security-txt.controller.ts` | [Documentos legales](legal.md): versión vigente, documentos que se aceptan, `security.txt` |
 | `src/dashboard/` | `auth.service.ts`, `dashboard.controller.ts`, `dashboard.service.ts` | Sesiones, panel del comercio, links de pago, sitio |
 | `src/` | `health.controller.ts`, `checkout-page.controller.ts`, `admin-page.controller.ts` | `/health`, la página de checkout y el panel interno `/admin` |
 
@@ -58,6 +59,7 @@ Todo vive en un solo `AppModule`. Proveedores de infraestructura:
 | `CheckoutPageController` | `/checkout` | Ninguna (HTML; `Referrer-Policy: no-referrer`, `Cache-Control: no-store`) |
 | `AdminPageController` | `/admin` | Ninguna para el HTML (no trae datos); cada llamada que hace exige `X-Internal-Token` |
 | `HealthController` | `/health` | Ninguna; 200 solo si PostgreSQL y Redis responden |
+| `SecurityTxtController` | `/.well-known/security.txt` | Ninguna; 404 si no hay `SECURITY_CONTACT` ([legal.md](legal.md)) |
 
 Detalle de cada ruta en [api.md](api.md) y [dashboard-api.md](dashboard-api.md).
 

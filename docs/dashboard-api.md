@@ -11,7 +11,7 @@ Errores: `{ "error": { "code": "...", "message": "texto en español para mostrar
 ## Cuenta y sesión
 | Método | Ruta | Cuerpo | Respuesta |
 |---|---|---|---|
-| POST | /signup | `{name, email, password, business_name, rif}` | 201 `Session` |
+| POST | /signup | `{name, email, password, business_name, rif, accept_terms: true}` | 201 `Session`; sin `accept_terms: true` → 400 `signup_invalid` (`param: accept_terms`) |
 | POST | /login | `{email, password}` | `Session`; 401 `invalid_credentials`; 429 `too_many_attempts` |
 | POST | /logout | — | `{ok:true}` |
 | GET | /me | — | `Session` |

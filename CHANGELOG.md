@@ -4,6 +4,9 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 
 ## 2026-10-20
 
+### Agregado
+- **Documentos legales (borradores)**: términos y condiciones, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable, como páginas del sitio en `#/legal`. El registro exige aceptarlos y guarda la constancia (migración 011). Deben pasar por un abogado venezolano antes de publicarse. Ver [docs/legal.md](docs/legal.md).
+
 ### Cambiado
 - **Liquidación solo en bolívares** (migración 010), como exige la ley: lo cobrado en USD o USDT se convierte a VES en el corte y se retiran los módulos `settlement_usdt` y `settlement_usd`. Ver [docs/liquidaciones.md](docs/liquidaciones.md).
 - **Métodos por contrato**: solo el maestro de Paguara habilita un método a un comercio, con la referencia del contrato. Ver [docs/modulos-por-comercio.md](docs/modulos-por-comercio.md).

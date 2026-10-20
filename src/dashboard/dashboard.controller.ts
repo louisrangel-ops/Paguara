@@ -29,9 +29,9 @@ export class DashboardAuthController {
   constructor(private readonly auth: AuthService, private readonly merchants: MerchantsService) {}
 
   @Post('signup')
-  async signup(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: Record<string, string>) {
+  async signup(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: Record<string, unknown>) {
     assertSameOriginWrite(req);
-    const { userId } = await this.auth.signup(b);
+    const { userId } = await this.auth.signup(b as Parameters<AuthService['signup']>[0], { ip: clientIp(req), userAgent: req.header('user-agent') });
     const s = await this.auth.resolve(await this.auth.startSession(userId, res));
     return sessionView(s!, await this.merchants.get(s!.merchantId));
   }

@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 import { ApiError } from '../common/errors';
 import { REDIS } from '../common/idempotency.interceptor';
 import { PG_POOL, withTransaction } from '../database/database';
+import { ACCEPTED_AT_SIGNUP, LEGAL_VERSION } from '../legal/legal-documents';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number, opts: object) => Promise<Buffer>;
 const SCRYPT = { N: 16384, r: 8, p: 1 };
@@ -57,8 +58,14 @@ const DUMMY_HASH = 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAA
 export class AuthService {
   constructor(@Inject(PG_POOL) private readonly pool: Pool, @Inject(REDIS) private readonly redis: Redis) {}
 
-  /** Crea comercio (KYC pendiente) + usuario dueño en una sola transacción. */
-  async signup(input: { name?: string; email?: string; password?: string; business_name?: string; rif?: string }) {
+  /**
+   * Crea comercio (KYC pendiente) + usuario dueño en una sola transacción, y deja
+   * constancia de que aceptó los documentos legales vigentes (versión, IP y navegador).
+   */
+  async signup(
+    input: { name?: string; email?: string; password?: string; business_name?: string; rif?: string; accept_terms?: unknown },
+    origin: { ip?: string | null; userAgent?: string | null } = {},
+  ) {
     const name = (input.name ?? '').trim();
     const email = (input.email ?? '').trim().toLowerCase();
     const password = input.password ?? '';
@@ -70,6 +77,7 @@ export class AuthService {
     if (password.length < 10 || password.length > 200) throw bad('password', 'La contraseña debe tener al menos 10 caracteres');
     if (business.length < 2 || business.length > 120) throw bad('business_name', 'Escribe el nombre de tu negocio');
     if (!RIF.test(rif)) throw bad('rif', 'El RIF debe tener el formato J-12345678-9');
+    if (input.accept_terms !== true) throw bad('accept_terms', 'Para crear la cuenta debes aceptar los términos, el acuerdo de comercio y las políticas');
     const normalizedRif = rif.replace(/^([JGVEP])-?(\d{8})-?(\d)$/, '$1-$2-$3');
 
     const passwordHash = await hashPassword(password);
@@ -81,6 +89,11 @@ export class AuthService {
         await c.query('INSERT INTO dashboard.users (id, merchant_id, email, name, password_hash) VALUES ($1, $2, $3, $4, $5)',
           [userId, merchantId, email, name, passwordHash]);
         await grantSandboxMethods(c, merchantId);
+        for (const doc of ACCEPTED_AT_SIGNUP) {
+          await c.query(
+            'INSERT INTO dashboard.legal_acceptances (user_id, merchant_id, document, version, ip, user_agent) VALUES ($1, $2, $3, $4, $5, $6)',
+            [userId, merchantId, doc, LEGAL_VERSION, origin.ip ?? null, origin.userAgent ? origin.userAgent.slice(0, 400) : null]);
+        }
       });
     } catch (e) {
       const err = e as { code?: string; constraint?: string };
