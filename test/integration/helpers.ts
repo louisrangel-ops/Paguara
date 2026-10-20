@@ -60,7 +60,7 @@ export async function setup() {
 }
 
 export async function seedRates(fx: FxService) {
-  await fx.recordRate('USD', 'VES', '36.5', 'BCV');
+  await fx.recordRate('USD', 'VES', '36.5', 'BCV', new Date(), FxService.venezuelaDate());
   await fx.recordRate('USDT', 'VES', '38.2', 'BINANCE_P2P');
   await fx.recordRate('USDT', 'USD', '0.999', 'EXCHANGE'); // 1 USDT = 0,999 USD en el exchange
 }

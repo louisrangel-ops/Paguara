@@ -12,7 +12,7 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 | Esquema | Para qué | Migración |
 |---|---|---|
 | `ledger` | Monedas, cuentas, asientos, partidas, saldos | 001, 004 |
-| `fx` | Tasas observadas y cotizaciones congeladas | 002 |
+| `fx` | Tasas observadas, fecha efectiva BCV y cotizaciones congeladas | 002, 015 |
 | `payments` | PaymentIntents, transiciones, links de pago | 003, 005, 007, 008 |
 | `merchants` | Comercios, llaves API, reglas de liquidación, capacidades por comercio y perfil ISO 8583 | 005, 007, 008, 012 |
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
@@ -143,6 +143,12 @@ interno con `platform.operator_role_changes` ([admin-panel-rbac.md](admin-panel-
 
 ### 012 · `012_return_url.sql` — URL de retorno del checkout
 - `payments.payment_intents.return_url` (`text`, `NULL` = sin regreso), máximo 2048 caracteres. La forma (https, sin usuario ni clave) la valida la API. La usan las [integraciones con tiendas](integraciones/README.md).
+
+### 015 · `015_bcv_official_daily_rate.sql` — Tasa oficial BCV por fecha efectiva
+- `fx.rates.effective_date`: fecha oficial de vigencia; obligatoria cuando `source='BCV'`.
+- Índice único diario por par/BCV para impedir dos tasas oficiales distintas del mismo día.
+- USD/VES selecciona la última fecha efectiva vigente en Venezuela y no usa la ventana genérica de antigüedad.
+- Las recargas de la misma tasa del mismo día son idempotentes.
 
 ### 014 · `014_mfa_kms_reconciliation.sql` — Doble factor, secretos de los bancos y conciliación diaria
 - `security.mfa_factors (principal_type 'user'|'operator', principal_id, secret_sealed, confirmed_at, last_used_step)`: semilla TOTP cifrada con el KMS; `confirmed_at` nulo = inscripción a medias.

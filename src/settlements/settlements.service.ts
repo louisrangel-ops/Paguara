@@ -141,10 +141,18 @@ export class SettlementsService {
 
     const splits: PayoutSplit[] = [];
     for (const r of rules) {
-      splits.push(r.target_currency === source
-        ? { currency: source, bps: r.bps }
-        : { currency: r.target_currency, bps: r.bps, spreadBps,
-            quote: await this.fx.freezeQuote(c, source, r.target_currency, defaultRateSource(source, r.target_currency), 60) });
+      if (r.target_currency === source) {
+        splits.push({ currency: source, bps: r.bps });
+      } else {
+        const usdVes = [source, r.target_currency].includes('USD') && [source, r.target_currency].includes('VES');
+        splits.push({
+          currency: r.target_currency,
+          bps: r.bps,
+          spreadBps: usdVes ? 0 : spreadBps,
+          quote: await this.fx.freezeQuote(c, source, r.target_currency,
+            usdVes ? 'BCV' : defaultRateSource(source, r.target_currency), 60),
+        });
+      }
     }
 
     const payoutId = `po_${randomBytes(10).toString('hex')}`;

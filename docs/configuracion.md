@@ -34,7 +34,7 @@ reales) y `.env.development` (sandbox local, ficticio, versionado a propósito).
 | `PUBLIC_BASE_URL` | URL del pedido | URL pública para links de pago y checkout | `dashboard.controller.ts` |
 | `OTHER_MODE_DASHBOARD_URL` | `null` | Dashboard del otro modo, para el selector "modo de prueba" | `dashboard.controller.ts` |
 | `FX_MAX_RATE_AGE_SECONDS` | `21600` (6 h) | Antigüedad máxima de una tasa para cotizar | `fx.service.ts` |
-| `FX_PAYOUT_SPREAD_BPS` | `120` (1,2 %) | Spread al convertir liquidaciones | `settlements.service.ts` |
+| `FX_PAYOUT_SPREAD_BPS` | `120` (1,2 %) | Spread para conversiones distintas de USD/VES. USD→VES usa la tasa BCV exacta, sin spread | `settlements.service.ts` |
 | `WEBHOOK_ALLOW_HTTP` | `false` | `true` permite endpoints `http://` (desarrollo) | `webhooks.service.ts` |
 | `WEBHOOK_ALLOW_PRIVATE` | `false` | `true` permite `localhost` e IPs privadas (desarrollo) | `webhooks.service.ts` |
 | `WEBHOOK_WORKER` | activo | `false` apaga el worker de entrega en esa réplica | `webhooks.service.ts` |

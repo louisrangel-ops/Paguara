@@ -195,11 +195,11 @@ test('corte de lote: sin regla de split o bajo el mínimo, el comercio espera al
   }));
   const r2 = await ctx.settlements.runCutoff('2026-10-17-USD', { sourceCurrency: 'USD' });
   assert.deepEqual(r2.payouts.map((p) => p.merchantId), [small]);
-  // Lo cobrado en dólares se le paga en bolívares a tasa BCV, menos el spread de conversión
+  // Lo cobrado en dólares se paga en bolívares exactamente a la tasa oficial BCV vigente, sin spread.
   const [leg] = r2.payouts[0].legs;
   assert.equal(leg.currency, 'VES');
   assert.equal(leg.rate, '36.5');
-  assert.ok(leg.spread > 0n);
+  assert.equal(leg.spread, 0n);
   assert.deepEqual(r2.skipped, [{ merchantId: noRule, reason: 'no_settlement_rule' }]);
 });
 

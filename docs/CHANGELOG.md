@@ -9,6 +9,12 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Esquema] Migración 015: `fx.rates.effective_date` y unicidad diaria para tasas BCV.
+- [FX] Toda conversión USD/VES usa obligatoriamente la tasa oficial BCV vigente por fecha de Venezuela.
+- [Liquidaciones] USD→VES se convierte a BCV exacto, sin spread.
+- [API] Las cargas `source=BCV` requieren `effective_date=YYYY-MM-DD`.
+
+
 - [Esquema] Migración 014: esquemas `security` (factores 2FA, códigos de respaldo, auditoría append-only) y `reconciliation` (extractos, movimientos, corridas, cruces append-only, diferencias); `platform.operator_sessions`, `platform.rail_credentials` (solo `env:v1:`) y `platform.alerts`.
 - [Seguridad] Doble factor TOTP con códigos de respaldo: obligatorio para operadores de `/admin` (sesión `ops_` tras token y código), opcional en el panel del comercio, con reinicio por otro maestro y motivo auditado. Ver [doble-factor.md](doble-factor.md).
 - [Seguridad] Gestor de secretos: cifrado por sobre con proveedor intercambiable (AWS KMS en producción, llave local en desarrollo), `npm run secrets:rewrap` para rotar, secretos de los bancos versionados en `platform.rail_credentials`. Ver [gestor-de-secretos.md](gestor-de-secretos.md).
