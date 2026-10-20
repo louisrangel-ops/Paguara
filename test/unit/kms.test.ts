@@ -85,9 +85,9 @@ test('AWS KMS: pide una DEK por secreto, la desenvuelve con Decrypt y la guarda 
   const client = fakeAws();
   const aws = new AwsKmsProvider('alias/paguara', client);
   const v = new SecretVault(aws, null);
-  const sealed = await v.seal('-----BEGIN PRIVATE KEY-----', 'rail:ves_c2p:private_key');
-  assert.equal(await v.open(sealed, 'rail:ves_c2p:private_key'), '-----BEGIN PRIVATE KEY-----');
-  assert.equal(await v.open(sealed, 'rail:ves_c2p:private_key'), '-----BEGIN PRIVATE KEY-----');
+  const sealed = await v.seal('contenido de una llave privada de prueba', 'rail:ves_c2p:private_key');
+  assert.equal(await v.open(sealed, 'rail:ves_c2p:private_key'), 'contenido de una llave privada de prueba');
+  assert.equal(await v.open(sealed, 'rail:ves_c2p:private_key'), 'contenido de una llave privada de prueba');
   assert.deepEqual(client.calls, ['GenerateDataKey', 'Decrypt'], 'la segunda lectura usa la DEK en memoria');
   assert.ok(v.isCurrent(sealed), 'con alias, lo cifrado en AWS cuenta como vigente: rewrap no lo repite');
   assert.ok(new AwsKmsProvider('abc').isActive('arn:aws:kms:us-east-1:111:key/abc'));
