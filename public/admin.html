@@ -219,7 +219,8 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     return data;
   }
   const fail = (slot, e) => slot.replaceChildren(el('div', { class: 'banner bad', role: 'alert', text: e.message }));
-  const isMaster = () => me && me.role === 'master';
+  const ROLE_LABELS = { master:'Maestro / Superadmin', operator:'Operador legado', compliance:'Cumplimiento', operations:'Operaciones', treasury:'Tesorería', support:'Soporte', auditor:'Auditor' };
+  const can = (p) => !!(me && Array.isArray(me.permissions) && me.permissions.includes(p));
 
   $('auth').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -238,13 +239,16 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     }
     store.set('paguara.internal.token', token);
     $('auth').hidden = true; $('app').hidden = false;
-    $('who').textContent = me.name + (isMaster() ? ' · maestro' : ' · operador');
-    document.querySelectorAll('.master-only').forEach((n) => { n.hidden = !isMaster(); });
+    $('who').textContent = me.name + ' · ' + (ROLE_LABELS[me.role] || me.role);
+    document.querySelectorAll('[data-perm]').forEach((n) => { n.hidden = !can(n.dataset.perm); });
     refresh();
   }
   function refresh() {
-    loadPayouts(); loadRequests();
-    if (isMaster()) { loadGlobals(); loadOperators(); }
+    if (can('payouts:read')) loadPayouts();
+    if (can('capabilities:read')) loadRequests();
+    if (can('platform:manage')) loadGlobals();
+    if (can('merchants:read')) loadMerchantList();
+    if (can('operators:read')) loadOperators();
   }
   $('reload').addEventListener('click', refresh);
 
@@ -267,8 +271,8 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
           const ins = (p.instructions || [])[0] || {};
           const d = ins.destination || {};
           const mine = p.approvals.some((a) => a.operator === me.name);
-          const approve = el('button', { class: 'btn', type: 'button', text: mine ? 'Ya aprobaste' : 'Aprobar', disabled: mine, 'aria-label': 'Aprobar la liquidación de ' + p.business_name });
-          approve.addEventListener('click', async () => {
+          const approve = can('payouts:approve') ? el('button', { class: 'btn', type: 'button', text: mine ? 'Ya aprobaste' : 'Aprobar', disabled: mine, 'aria-label': 'Aprobar la liquidación de ' + p.business_name }) : null;
+          if (approve) approve.addEventListener('click', async () => {
             if (!confirm('¿Aprobar el pago de ' + bs(ins.amount) + ' a ' + p.business_name + ' (cuenta ' + (d.account || '?') + ')?')) return;
             approve.disabled = true;
             try {
@@ -300,7 +304,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
       counter('req-count', data.length, 'solicitud', 'solicitudes');
       if (!data.length) { slot.replaceChildren(el('p', { class: 'empty', text: 'No hay solicitudes pendientes.' })); return; }
       slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, ['Comercio', 'Pide', 'KYC', 'Desde', isMaster() ? 'Contrato' : null, isMaster() ? '' : null].filter((t) => t !== null).map((t) => el('th', { scope: 'col', text: t })))]),
+        el('thead', {}, [el('tr', {}, ['Comercio', 'Pide', 'KYC', 'Desde', can('capabilities:manage') ? 'Contrato' : null, can('capabilities:manage') ? '' : null].filter((t) => t !== null).map((t) => el('th', { scope: 'col', text: t })))]),
         el('tbody', {}, data.map((r) => {
           const method = r.key !== 'payment_links' && r.key !== 'webhooks';
           const contract = method ? contractInput('Contrato de ' + r.name + ' con ' + r.business_name) : null;
@@ -309,8 +313,8 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
             el('td', { text: r.name }),
             el('td', {}, [r.merchant_status === 'active' ? pill('Activo', 'ok') : pill(r.kyc_submitted_at ? 'KYC en revisión' : 'Sin KYC', 'warn')]),
             el('td', { text: when(r.requested_at) }),
-            isMaster() ? el('td', {}, [contract || el('span', { class: 'muted', text: 'No aplica' })]) : null,
-            isMaster() ? el('td', { class: 'actions' }, [
+            can('capabilities:manage') ? el('td', {}, [contract || el('span', { class: 'muted', text: 'No aplica' })]) : null,
+            can('capabilities:manage') ? el('td', { class: 'actions' }, [
               el('button', { class: 'btn', type: 'button', text: 'Aprobar', 'aria-label': 'Aprobar ' + r.name + ' para ' + r.business_name, onclick: () => decide(r, 'allowed', contract) }),
               el('button', { class: 'btn danger', type: 'button', text: 'Rechazar', 'aria-label': 'Rechazar ' + r.name + ' para ' + r.business_name, onclick: () => decide(r, 'blocked') }),
             ]) : null,
@@ -328,7 +332,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     try {
       await api('POST', '/merchants/' + encodeURIComponent(r.merchant_id) + '/capabilities/' + encodeURIComponent(r.key), body);
       say((status === 'allowed' ? 'Aprobado: ' : 'Rechazado: ') + r.name + ' para ' + r.business_name);
-      loadRequests(); loadGlobals();
+      loadRequests(); if (can('platform:manage')) loadGlobals();
     } catch (e) { alert(e.message); }
   }
 
