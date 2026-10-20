@@ -561,6 +561,13 @@
       landing(main);
       if (p[0] === 'precios') focusTarget = $('precios-h');
     } else if (p[0] === 'docs') {
+      const s = await ensureSession();
+      if (!alive(tok)) return;
+      if (!s) {
+        const next = r.path + (location.hash.includes('?') ? '?' + location.hash.split('?')[1] : '');
+        go('#/entrar?next=' + encodeURIComponent(next));
+        return;
+      }
       const main = publicShell(app, 'docs');
       docs(main, p[1]);
       if (p[1]) focusTarget = $('doc-' + p[1]);
@@ -589,7 +596,7 @@
   function publicShell(app, current) {
     const items = () => [
       el('a', { href: '#/precios', text: 'Precios', 'aria-current': current === 'precios' ? 'page' : false }),
-      el('a', { href: '#/docs', text: 'Documentación', 'aria-current': current === 'docs' ? 'page' : false }),
+      state.session ? el('a', { href: '#/docs', text: 'Documentación', 'aria-current': current === 'docs' ? 'page' : false }) : null,
       state.session ? el('a', { class: 'btn', href: '#/dashboard', text: 'Ir al panel' }) : el('a', { href: '#/entrar', text: 'Entrar' }),
       state.session ? null : el('a', { class: 'btn', href: '#/registro', text: 'Crear cuenta' }),
     ];
@@ -609,8 +616,10 @@
       el('footer', { class: 'site-footer' }, [el('div', { class: 'wrap' }, [
         el('div', {}, [brandLink('#/'), el('p', { class: 'small', text: 'Pagos en bolívares, dólares y USDT para comercios en Venezuela.' })]),
         el('nav', { 'aria-label': 'Pie de página' }, [
-          el('a', { href: '#/precios', text: 'Precios' }), el('a', { href: '#/docs', text: 'Documentación' }),
-          el('a', { href: '#/docs/pruebas', text: 'Modo de prueba' }), el('a', { href: '#/entrar', text: 'Entrar' }),
+          el('a', { href: '#/precios', text: 'Precios' }),
+          state.session ? el('a', { href: '#/docs', text: 'Documentación' }) : null,
+          state.session ? el('a', { href: '#/docs/pruebas', text: 'Modo de prueba' }) : null,
+          state.session ? null : el('a', { href: '#/entrar', text: 'Entrar' }),
         ]),
         el('nav', { class: 'legal-links', 'aria-label': 'Legal' }, [
           el('a', { href: '#/legal/terminos', text: 'Términos' }), el('a', { href: '#/legal/privacidad', text: 'Privacidad' }),
@@ -661,7 +670,7 @@
         el('p', { class: 'lede rise', style: '--i:1', text: 'Pago Móvil, débito inmediato, tarjetas, Zelle, USDT y efectivo en un mismo checkout. La tasa se congela en el momento en que tu cliente paga: el monto que ve es el que cobras.' }),
         el('div', { class: 'ctas rise', style: '--i:2' }, [
           el('a', { class: 'btn lg', href: '#/registro' }, ['Crear cuenta', el('span', { class: 'arrow', 'aria-hidden': 'true', text: '→' })]),
-          el('a', { class: 'btn lg quiet', href: '#/docs', text: 'Leer la documentación' }),
+          state.session ? el('a', { class: 'btn lg quiet', href: '#/docs', text: 'Leer la documentación' }) : null,
         ]),
         el('p', { class: 'fine rise', style: '--i:3', text: 'Empiezas en modo de prueba, sin papeleo. Activas los cobros reales cuando envíes los datos de tu empresa.' }),
       ]),
@@ -917,6 +926,7 @@
           [code('customer'), 'objeto', 'Opcional. Datos del pagador para conciliación.'],
           [code('metadata'), 'objeto', 'Opcional. Tus propios datos; vuelven en los webhooks.'],
           [code('expires_in'), 'número', 'Opcional. Segundos hasta que el pago venza si nadie paga.'],
+          [code('return_url'), 'string', 'Opcional. URL https a la que vuelve tu cliente desde el checkout. Le agregamos payment_intent y redirect_status; confirma el estado consultando el pago, no con esos parámetros.'],
         ], 'Campos para crear un pago'),
         P('Si reusas una Idempotency-Key con otro cuerpo, recibes ', code('422 idempotency_key_reused'), '; si la primera llamada sigue en curso, ', code('409'), '.'),
       ]),
@@ -925,6 +935,7 @@
         codeBlock(B + '/checkout?pi=pi_3f9a1c2e8b7d40&cs=pi_3f9a1c2e8b7d40_secret_Xq8…&pk=pk_test_51Qd…', 'URL del checkout'),
         P('El checkout muestra los métodos, cotiza el monto en la moneda del método con la tasa congelada y su cuenta regresiva, pide los datos de Pago Móvil C2P y da instrucciones para transferencias, Zelle, USDT (con QR) y efectivo. Se actualiza solo cuando el banco o la red confirman.'),
         P('¿No programas? Crea un ', el('a', { href: '#/dashboard/links', text: 'link de pago' }), ' en el panel: cada vez que alguien lo abre se crea un pago nuevo y se le lleva al checkout.'),
+        P('¿Vendes con WooCommerce? Instala el plugin de Paguara: crea el pago, lleva a tu cliente al checkout, lo devuelve a tu tienda y marca el pedido pagado cuando llega el webhook firmado.'),
       ]),
       sec('metodos', 'Métodos y monedas', [
         P('Cada método cobra en una moneda fija. Si difiere de la moneda del precio, convertimos con la tasa de la fuente que corresponda (BCV para USD/VES, Binance P2P para USDT/VES).'),
@@ -966,6 +977,7 @@
         simpleTable(['Código', 'HTTP', 'Qué significa'], [
           [code('amount_invalid'), '422', 'El monto no es un entero positivo en unidades mínimas.'],
           [code('idempotency_key_reused'), '422', 'Usaste la misma Idempotency-Key con otro cuerpo.'],
+          [code('return_url_invalid'), '400', 'return_url no es una URL https absoluta o trae usuario y clave.'],
           [code('fx_quote_expired'), '409', ERRORS.fx_quote_expired + ' Vuelve a adjuntar el método.'],
           [code('fx_rate_unavailable'), '503', 'No hay una tasa reciente para convertir a la moneda del método.'],
           [code('rail_reference_already_used'), '409', 'La referencia del banco ya se usó para otro pago.'],
@@ -1080,7 +1092,7 @@
           : await api.post('/login', { email: vals[0].trim(), password: vals[1] });
         if (s.mfa_required) { mfaStep(s.mfa_token); return; }
         state.session = s;
-        const next = r.query.next && r.query.next.startsWith('/dashboard') ? r.query.next : '/dashboard';
+        const next = r.query.next && (r.query.next.startsWith('/dashboard') || r.query.next.startsWith('/docs')) ? r.query.next : '/dashboard';
         go('#' + next);
       } catch (ex) {
         setBusy(btn, false);
@@ -1131,7 +1143,7 @@
       IS_SERVER ? null : el('p', { class: 'banner note small', text: 'Modo de demostración: datos de ejemplo. Cualquier correo y contraseña válidos sirven.' }),
     ]);
     app.replaceChildren(el('div', { class: 'auth' }, [
-      el('header', { class: 'auth-top' }, [el('div', { class: 'wrap' }, [brandLink('#/'), el('a', { href: '#/docs', text: 'Documentación' })])]),
+      el('header', { class: 'auth-top' }, [el('div', { class: 'wrap' }, [brandLink('#/'), el('a', { href: '#/', text: 'Volver al inicio' })])]),
       el('main', { class: 'auth-main', id: 'main', tabindex: '-1' }, [card]),
       el('div'),
     ]));
@@ -2239,25 +2251,51 @@
   function drawKyc(card, tok) {
     const m = state.session.merchant;
     const k = kycInfo(m);
-    const head = el('div', { class: 'card-head' }, [el('h2', { id: 'kyc-h', text: 'Activación de la cuenta' }), pill(k.text, k.tone)]);
-    if (m.status === 'active') { card.replaceChildren(head, el('p', { text: 'Tu cuenta está activa. Ya puedes crear llaves de producción y cobrar de verdad.' })); return; }
+    const head = el('div', { class: 'card-head' }, [el('h2', { id: 'kyc-h', text: 'Activación y perfil de aceptación' }), pill(k.text, k.tone)]);
+    if (m.status === 'active') {
+      card.replaceChildren(head,
+        el('p', { text: 'Tu cuenta está activa. Los identificadores técnicos del adquirente (MCC, MID, TID y demás parámetros ISO 8583) los provisiona Paguara después de la homologación.' }),
+        el('p', { class: 'small muted', text: 'Nunca ingreses PAN, CVV, PIN, track 1/2 ni otros datos de tarjeta en este formulario.' }));
+      return;
+    }
     if (m.status !== 'pending_kyc') { card.replaceChildren(head, el('p', { text: 'Tu cuenta tiene restricciones. Revisa el correo que te enviamos con los pasos a seguir.' })); return; }
     if (m.kyc_submitted_at) {
-      card.replaceChildren(head, el('p', { text: 'Recibimos los datos de tu empresa el ' + fmtFull(m.kyc_submitted_at).replace(/\.$/, '') + '. Te escribiremos al correo de la cuenta cuando terminemos la revisión. Mientras tanto puedes seguir probando en modo de prueba.' }));
+      card.replaceChildren(head,
+        el('p', { text: 'Recibimos los datos de tu empresa el ' + fmtFull(m.kyc_submitted_at).replace(/\.$/, '') + '. Te escribiremos cuando terminemos la revisión y el provisionamiento del perfil de aceptación.' }),
+        el('p', { class: 'small muted', text: 'El MCC, Merchant ID, Terminal ID y parámetros de red se asignan internamente; no los define el comercio.' }));
       return;
     }
     const f = (id, label, attrs, hint, full) => field({ id, label, attrs: Object.assign({ autocomplete: 'off' }, attrs), hint, full });
     const legal = f('k-legal', 'Razón social', { autocomplete: 'organization', placeholder: 'Inversiones El Ávila, C.A.…' }, 'Tal como aparece en el RIF.', true);
     const rep = f('k-rep', 'Representante legal', { autocomplete: 'name', placeholder: 'María Fernández…' });
     const repId = f('k-repid', 'Cédula del representante', { placeholder: 'V-12345678…', translate: 'no', autocapitalize: 'characters' });
-    const phone = f('k-phone', 'Teléfono de contacto', { type: 'tel', inputmode: 'tel', autocomplete: 'tel', placeholder: '0414-1234567…' });
-    const addr = field({ id: 'k-addr', label: 'Dirección fiscal', tag: 'textarea', attrs: { autocomplete: 'street-address', rows: '3', placeholder: 'Av. Principal de Los Palos Grandes, Edif. …' }, full: true });
-    const bank = field({ id: 'k-bank', label: 'Banco para tus liquidaciones en Bs', input: el('select', { id: 'k-bank' }, [el('option', { value: '', text: 'Elige un banco…' }), ...BANKS.map(([c, n]) => el('option', { value: n, text: n + ' (' + c + ')' }))]) });
+    const phone = f('k-phone', 'Teléfono operativo', { type: 'tel', inputmode: 'tel', autocomplete: 'tel', placeholder: '0414-1234567…' });
+    const supportEmail = f('k-support-email', 'Correo de soporte al cliente', { type: 'email', autocomplete: 'email', placeholder: 'soporte@comercio.com…' });
+    const addr1 = f('k-addr1', 'Dirección fiscal', { autocomplete: 'address-line1', placeholder: 'Av. Principal, Edif. Centro, local 3…' }, null, true);
+    const addr2 = f('k-addr2', 'Complemento de dirección (opcional)', { autocomplete: 'address-line2', placeholder: 'Piso, oficina, referencia…' }, null, true);
+    const city = f('k-city', 'Ciudad', { autocomplete: 'address-level2', placeholder: 'Caracas…' });
+    const stateF = f('k-state', 'Estado / región', { autocomplete: 'address-level1', placeholder: 'Distrito Capital…' });
+    const country = f('k-country', 'País (ISO alpha-2)', { value: 'VE', maxlength: '2', placeholder: 'VE…', autocapitalize: 'characters', translate: 'no' }, 'Ejemplo: VE.');
+    const postal = f('k-postal', 'Código postal (opcional)', { autocomplete: 'postal-code', placeholder: '1060…' });
+    const activity = f('k-activity', 'Actividad económica', { placeholder: 'Venta de alimentos y bebidas…' }, 'Se usa para revisión y asignación del MCC por el adquirente.', true);
+    const ecommerce = f('k-ecommerce', 'URL del e-commerce', { type: 'url', placeholder: 'https://tienda.com…', spellcheck: 'false' }, 'Debe usar HTTPS.', true);
+    const website = f('k-website', 'Sitio corporativo (opcional)', { type: 'url', placeholder: 'https://empresa.com…', spellcheck: 'false' }, null, true);
+    const descriptor = f('k-descriptor', 'Descriptor para el tarjetahabiente', { maxlength: '22', placeholder: 'CAFE EL AVILA…' }, '5–22 caracteres. Es candidato para el descriptor de estado de cuenta; la red/adquirente puede ajustarlo.', true);
+    const bank = field({ id: 'k-bank', label: 'Banco para liquidaciones en Bs', input: el('select', { id: 'k-bank' }, [el('option', { value: '', text: 'Elige un banco…' }), ...BANKS.map(([code, n]) => el('option', { value: n, text: n + ' (' + code + ')' }))]) });
     const acct = f('k-acct', 'Número de cuenta', { inputmode: 'numeric', placeholder: '20 dígitos…', translate: 'no' }, 'A nombre de la empresa.');
     const err = el('div', { class: 'full' });
     const btn = el('button', { class: 'btn', type: 'submit', text: 'Enviar para revisión' });
-    const form = el('form', { class: 'form-grid', novalidate: true }, [legal, rep, repId, phone, addr, bank, acct, err, el('div', { class: 'full' }, [btn])]);
+    const form = el('form', { class: 'form-grid', novalidate: true }, [
+      legal, rep, repId, phone, supportEmail, addr1, addr2, city, stateF, country, postal,
+      activity, ecommerce, website, descriptor, bank, acct, err, el('div', { class: 'full' }, [btn]),
+    ]);
     const g = (x) => x.querySelector('input, select, textarea');
+    const httpsUrl = (v, optional) => {
+      const s = v.trim();
+      if (!s && optional) return null;
+      try { const u = new URL(s); return u.protocol === 'https:' ? null : 'La URL debe usar HTTPS.'; }
+      catch (_) { return 'Escribe una URL HTTPS válida.'; }
+    };
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       err.replaceChildren();
@@ -2265,8 +2303,16 @@
         [g(legal), (v) => (v.trim().length >= 3 ? null : 'Escribe la razón social.')],
         [g(rep), (v) => (v.trim().length >= 3 ? null : 'Escribe el nombre del representante.')],
         [g(repId), (v) => (/^[VE]-?\d{6,9}$/i.test(v.trim()) ? null : 'La cédula debe tener la forma V-12345678.')],
-        [g(phone), (v) => (/^0\d{3}-?\d{7}$/.test(v.trim().replace(/\s/g, '')) ? null : 'Escribe el teléfono con su código, como 0414-1234567.')],
-        [g(addr), (v) => (v.trim().length >= 10 ? null : 'Escribe la dirección fiscal completa.')],
+        [g(phone), (v) => (v.trim().length >= 7 ? null : 'Escribe un teléfono de contacto válido.')],
+        [g(supportEmail), (v) => (EMAIL_RE.test(v.trim()) ? null : 'Escribe un correo de soporte válido.')],
+        [g(addr1), (v) => (v.trim().length >= 8 ? null : 'Escribe la dirección fiscal.')],
+        [g(city), (v) => (v.trim().length >= 2 ? null : 'Escribe la ciudad.')],
+        [g(stateF), (v) => (v.trim().length >= 2 ? null : 'Escribe el estado o región.')],
+        [g(country), (v) => (/^[A-Za-z]{2}$/.test(v.trim()) ? null : 'Usa el código ISO de dos letras, por ejemplo VE.')],
+        [g(activity), (v) => (v.trim().length >= 3 ? null : 'Describe la actividad económica.')],
+        [g(ecommerce), (v) => httpsUrl(v, false)],
+        [g(website), (v) => httpsUrl(v, true)],
+        [g(descriptor), (v) => (/^[\x20-\x7e]{5,22}$/.test(v.trim()) && /[A-Za-z]/.test(v) ? null : 'Usa entre 5 y 22 caracteres imprimibles y al menos una letra.')],
         [g(bank), (v) => (v ? null : 'Elige el banco.')],
         [g(acct), (v) => (/^\d{20}$/.test(v.replace(/[\s-]/g, '')) ? null : 'La cuenta debe tener 20 dígitos.')],
       ]);
@@ -2274,12 +2320,26 @@
       setBusy(btn, true, 'Enviando…');
       try {
         const nm = await api.post('/account/kyc', {
-          legal_name: g(legal).value.trim(), representative_name: g(rep).value.trim(), representative_id: g(repId).value.trim().toUpperCase(),
-          address: g(addr).value.trim(), phone: g(phone).value.trim(), bank_name: g(bank).value, bank_account: g(acct).value.replace(/[\s-]/g, ''),
+          legal_name: g(legal).value.trim(),
+          representative_name: g(rep).value.trim(),
+          representative_id: g(repId).value.trim().toUpperCase(),
+          phone: g(phone).value.trim(),
+          support_email: g(supportEmail).value.trim().toLowerCase(),
+          address_line1: g(addr1).value.trim(),
+          address_line2: g(addr2).value.trim(),
+          city: g(city).value.trim(),
+          state: g(stateF).value.trim(),
+          country_code: g(country).value.trim().toUpperCase(),
+          postal_code: g(postal).value.trim(),
+          business_activity: g(activity).value.trim(),
+          ecommerce_url: g(ecommerce).value.trim(),
+          website: g(website).value.trim(),
+          statement_descriptor: g(descriptor).value.trim(),
+          bank_name: g(bank).value,
+          bank_account: g(acct).value.replace(/[\s-]/g, ''),
         });
         state.session.merchant = nm;
         if (!alive(tok)) return;
-        // Actualiza el estado del menú lateral sin perder la página
         const acctBox = document.querySelector('.acct');
         if (acctBox) { const ki = kycInfo(nm); acctBox.replaceChildren(el('b', { text: nm.business_name }), el('div', {}, [pill(ki.text, ki.tone)])); }
         drawKyc(card, tok);
@@ -2288,7 +2348,12 @@
         toast('Datos enviados para revisión');
       } catch (ex) { setBusy(btn, false); err.replaceChildren(errorBanner(ex, 'No pudimos enviar los datos')); }
     });
-    card.replaceChildren(head, el('p', { class: 'muted', text: 'Para cobrar con dinero real necesitamos los datos de tu empresa. Mientras los revisamos puedes seguir usando el modo de prueba.' }), form);
+    card.replaceChildren(
+      head,
+      el('p', { class: 'muted', text: 'Estos datos permiten identificar al comercio, construir la información estática de aceptación e-commerce y preparar la homologación ISO 8583. Los datos dinámicos de cada operación —monto, STAN, RRN, fecha/hora y resultado— se generan al procesar el pago.' }),
+      el('p', { class: 'banner info', role: 'note' }, [el('b', { text: 'No ingreses datos de tarjetas.' }), ' PAN, CVV, PIN, track 1/2 y credenciales 3DS nunca forman parte del onboarding del comercio.']),
+      form,
+    );
   }
 
   // ---------------------------------------------------------------------------

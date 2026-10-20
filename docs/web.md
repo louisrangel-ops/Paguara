@@ -8,12 +8,12 @@ tipos y medidas exactos están en [`DESIGN.md`](../DESIGN.md).
 
 | Superficie | Ruta | Archivos | Quién la sirve |
 |---|---|---|---|
-| Sitio público, registro, documentación, páginas legales y panel del comercio | `GET /` (rutas en el hash: `#/`, `#/precios`, `#/docs`, `#/legal/...`, `#/entrar`, `#/registro`, `#/dashboard/...`) | `public/site.html`, `public/assets/site.css`, `public/assets/site.js`, `public/assets/site-demo.js`, `public/assets/legal.js` ([textos legales](legal.md)) | `src/dashboard/dashboard.controller.ts` (envuelve `site.html` y pone `window.__SERVER__ = true`) |
+| Sitio público, registro, documentación autenticada, páginas legales y panel del comercio | `GET /` (rutas en el hash: `#/`, `#/precios`, `#/docs`, `#/legal/...`, `#/entrar`, `#/registro`, `#/dashboard/...`) | `public/site.html`, `public/assets/site.css`, `public/assets/site.js`, `public/assets/site-demo.js`, `public/assets/legal.js` ([textos legales](legal.md)) | `src/dashboard/dashboard.controller.ts` (envuelve `site.html` y pone `window.__SERVER__ = true`) |
 | Checkout alojado | `GET /checkout?pi=…&cs=…&pk=…` | `public/checkout.html` (CSS y JS en línea) | `src/checkout-page.controller.ts` |
 | Panel interno | `GET /admin` | `public/admin.html` (CSS y JS en línea) | `src/admin-page.controller.ts` |
 | Estáticos | `GET /assets/*` | `public/assets/` | `src/main.ts` (`useStaticAssets`, caché de 1 h) |
 
-Sin `window.__SERVER__` el sitio corre en modo demostración (así se publica en Vercel, ver [despliegue](despliegue.md#vercel-web-en-modo-demostración)) contra `window.DemoApi` (`site-demo.js`), y el
+`#/docs` exige sesión de comercio: sin sesión el router redirige a `#/entrar?next=/docs` y la navegación pública no muestra enlaces a la documentación.\n\nSin `window.__SERVER__` el sitio corre en modo demostración (así se publica en Vercel, ver [despliegue](despliegue.md#vercel-web-en-modo-demostración)) contra `window.DemoApi` (`site-demo.js`), y el
 checkout sin `pi`, `cs` y `pk` simula un pago. Así se publican las demos y se toman las capturas.
 
 No hay paso de compilación: el CSS y el JS se sirven tal cual. Tampoco hay dependencias de frontend; la única

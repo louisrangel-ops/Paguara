@@ -1,6 +1,6 @@
 # Paguara — ISO 8583 acquiring integration (foundation)
 
-Status: **development-only, NOT production-ready**. The codec is a deliberately constrained ASCII **test profile**, not a network-certified protocol implementation. It does not transmit cardholder data, open sockets, or register a live rail.
+Status: **development-only, NOT production-ready**. Merchant onboarding and acquirer-assigned MID/TID/MCC are modeled separately; see [merchant-onboarding-iso8583.md](merchant-onboarding-iso8583.md). The codec is a deliberately constrained ASCII **test profile**, not a network-certified protocol implementation. It does not transmit cardholder data, open sockets, or register a live rail.
 
 ## Existing integration boundary
 - `RailAdapter.charge` is the current payment connector interface.

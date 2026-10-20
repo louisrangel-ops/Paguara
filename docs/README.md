@@ -13,10 +13,14 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |
 | [Rieles y métodos de pago](metodos-de-pago.md) | Métodos, rieles, comisiones, IVA, IGTF, riel sandbox |
 | [ISO 8583: base para el adquirente](iso8583-acquirer-integration.md) | Codec de perfil de prueba, simulador emisor y requisitos antes de conectar un switch (en inglés) |
+| [Onboarding e ISO 8583](merchant-onboarding-iso8583.md) | Datos del comercio, MID/TID/MCC, campos ISO típicos y límites PCI/3DS |
+| [Panel administrador y RBAC](admin-panel-rbac.md) | Roles internos, permisos, gestión total de comercios, KYC, ISO 8583, operadores y tesorería |
 | [Métodos y módulos por comercio](modulos-por-comercio.md) | Interruptores de plataforma y del comercio, métodos por contrato, sandbox, precios negociados, panel interno `/admin` |
 | [API y autenticación](api.md) | API v1, checkout, API interna, llaves, idempotencia, errores |
 | [API del dashboard](dashboard-api.md) | Contrato web ↔ servidor del panel del comercio |
 | [Webhooks](webhooks.md) | Outbox, eventos, firma, reintentos, protección SSRF |
+| [Integración con tiendas en línea](integraciones/README.md) | Patrón de checkout alojado, plataformas (WooCommerce, Shopify, Wix, Tiendanube…), orden recomendado |
+| [Plugin de WooCommerce](integraciones/woocommerce.md) | Flujo, webhook, ajustes, instalación y pruebas del plugin |
 | [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote en bolívares, spread y doble aprobación |
 | [Conciliación bancaria y alertas](conciliacion.md) | Job diario banco ↔ ledger, extractos, diferencias, liberación de fondos, alertas |
 | [Configuración](configuracion.md) | Variables de entorno, una por una |

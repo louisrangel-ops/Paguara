@@ -19,7 +19,35 @@ Cada migración nueva se anota con su número.
 - [Config] `KMS_PROVIDER`, `KMS_KEY_ID`, `AWS_REGION`, `SECRETS_ENCRYPTION_PREVIOUS_KEYS`, `OPERATOR_SESSION_HOURS`, `ALERT_WEBHOOK_URL`, `RECON_LOOKBACK_DAYS`, `RECON_GRACE_DAYS`, `RECON_EVERY_SECONDS`; con `LIVEMODE=true` se exige `KMS_PROVIDER=aws`.
 - [Despliegue] `npm run reconcile` (cron diario) y `npm run secrets:rewrap`; `dev-jobs` concilia contra el banco simulado.
 - [Docs] `doble-factor.md`, `gestor-de-secretos.md` y `conciliacion.md`; seguridad, API, dashboard, configuración, despliegue, modelo de datos y liquidaciones actualizados.
+- [Esquema] Migración 013: roles internos funcionales y `platform.operator_role_changes` append-only.
+- [Seguridad] RBAC del panel interno con permisos por endpoint y protección contra revocar/demover al último master.
+- [API] Directorio de comercios, detalle KYC/ISO 8583, cambio de rol de operadores y `whoami.permissions`.
+- [Web] `/admin` ampliado a consola integral: comercios, KYC, ISO 8583, métodos, llaves, liquidaciones y gestión de roles.
+- [Tests] Matriz RBAC interna cubierta por pruebas unitarias.
+- [Docs] Nueva guía [admin-panel-rbac.md](admin-panel-rbac.md).
 
+
+- [Web] `#/docs` exige sesión del comercio; se ocultan los enlaces de documentación en landing, navegación, pie y login hasta autenticar.
+- [Dashboard] Onboarding KYC ampliado con ubicación, soporte, actividad, URL e-commerce y descriptor; prohíbe usar el formulario para datos de tarjeta.
+- [Esquema] Migración 012: `merchants.iso8583_profiles` separa MCC/MID/TID/identificador adquirente y parámetros del perfil.
+- [API] `GET /internal/merchants/:id` para revisión y `POST /internal/merchants/:id/iso8583_profile` para provisionamiento técnico por el maestro.
+- [Docs] Nueva guía [merchant-onboarding-iso8583.md](merchant-onboarding-iso8583.md).
+
+
+
+
+- [Integraciones] Plugin de WooCommerce en `integraciones/woocommerce/paguara-woocommerce/`: redirección al checkout alojado, regreso a la tienda, webhooks firmados verificados y consulta del pago con la llave secreta, modo pruebas y checkout de bloques. Ver [integraciones/woocommerce.md](integraciones/woocommerce.md).
+- [API] `return_url` opcional al crear un PaymentIntent (400 `return_url_invalid`); viene en `PaymentIntent` y en la vista del checkout.
+- [Esquema] Migración 012: `payments.payment_intents.return_url`.
+- [Web] El checkout vuelve a la tienda: enlace “Volver a la tienda sin pagar” y, al pagar, botón y regreso automático a los 5 s con `payment_intent` y `redirect_status`.
+- [CI] Job `woocommerce`: `php -l` y las pruebas del plugin.
+- [Docs] Guía de integración con tiendas en línea y orden recomendado de plataformas: [integraciones/README.md](integraciones/README.md).
+- [Docs] Documentos legales en borrador como páginas del sitio (`#/legal/...`): términos, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable; textos en `public/assets/legal.js`. Ver [legal.md](legal.md).
+- [Esquema] Migración 011: `dashboard.legal_acceptances`, append-only, constancia de la versión aceptada con IP y navegador.
+- [API] `POST /api/dashboard/signup` exige `accept_terms: true` (400 `signup_invalid`, `param: accept_terms`) y registra la aceptación en la misma transacción.
+- [Web] Casilla de aceptación en el registro, enlaces legales en el pie del sitio y del checkout, aviso de cookies informativo (`localStorage` `paguara_cookies`).
+- [Seguridad] `GET /.well-known/security.txt` (RFC 9116) si `SECURITY_CONTACT` está definida.
+- [Config] `SECURITY_CONTACT`.
 - [Rieles] Base ISO 8583 en `src/payment-intents/rails/iso8583/`: codec ASCII de perfil de prueba y simulador emisor en memoria (autorización, rechazo, timeout, reversos, conciliación). No es un riel registrado ni toca `LIVEMODE` (#13).
 - [CI] Workflow `iso8583-tests.yml`: typecheck y pruebas unitarias en PRs que tocan el codec o el simulador (#13).
 - [Docs] `iso8583-acquirer-integration.md` (requisitos del adquirente y próximos pasos, #13). La documentación de #13 en métodos de pago, CI, pruebas e índice; el riel sandbox ya no se describe como activo en `LIVEMODE=true` y webhooks aclara que el secreto se guarda cifrado cuando hay `SECRETS_ENCRYPTION_KEY` (#11); entradas de #12 con su número (#15).

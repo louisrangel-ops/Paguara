@@ -107,6 +107,7 @@ En cada PR y en cada push a `main`:
 |---|---|
 | `test` | Servicios `postgres:16` y `redis:7`; `npm ci`, `npm run typecheck`, `npm test`, `npm run test:integration` y `docker build` |
 | `secrets` | `gitleaks` v8.21.2 sobre todo el historial (`fetch-depth: 0`) con `.gitleaks.toml` |
+| `woocommerce` | PHP del runner (8.3): `php -l` de cada archivo del plugin y `php tests/run.php` ([integraciones/woocommerce.md](integraciones/woocommerce.md#pruebas)) |
 
 `.github/workflows/iso8583-tests.yml` (job `simulator`): en PRs que tocan `src/payment-intents/rails/iso8583/**`,
 `test/unit/iso8583-*.test.ts` o el propio workflow, y en push a `feature/iso8583-acquirer-foundation`, corre
@@ -127,9 +128,10 @@ En cada PR y en cada push a `main`:
 | `test/unit/totp.test.ts` | Vectores del RFC 6238, desfase de reloj, códigos de respaldo, parser de extractos, fecha de Caracas |
 | `test/integration/ledger.test.ts` | Triggers del ledger, idempotencia de asientos, 100 asientos concurrentes sin deadlock |
 | `test/integration/payment-intent-flow.test.ts` | Tabla SQL = tabla TS, flujo completo, P2P, rechazos, cotización vencida, confirmaciones simultáneas, USDT, IGTF, aislamiento entre comercios |
-| `test/integration/merchants-checkout.test.ts` | Llaves, KYC, RIF, checkout con `client_secret`, idempotencia durable, vencimiento, saldos no editables, corte de lote |
+| `test/integration/merchants-checkout.test.ts` | Llaves, KYC, RIF, checkout con `client_secret`, idempotencia durable, vencimiento, saldos no editables, corte de lote, `return_url` |
 | `test/integration/capabilities.test.ts` | Defaults y solicitudes, métodos apagados, lista por pago, bloqueo global, precios y límites negociados, módulos de links/webhooks, métodos por contrato y sandbox, panel interno, Banesco Panamá en sandbox |
 | `test/integration/payout-approvals.test.ts` | Operadores y roles, doble aprobación de liquidaciones, triggers de la BD, instrucciones solo en VES |
+| `test/unit/return-url.test.ts` | Validación de `return_url` |
 | `test/integration/dashboard.test.ts` | scrypt, registro y sesiones, límite de login, outbox y entrega de webhooks, SSRF, listados |
 | `test/integration/security.test.ts` | 2FA del comercio (inscripción, repetición, respaldo, login en dos pasos, bloqueo, reinicio), sesiones de operador con 2FA, secretos de bancos cifrados y versionados, rewrap |
 | `test/integration/reconciliation.test.ts` | Cruce por referencia y monto, liberación de fondos, diferencias y su cierre, alertas sin repetir, extracto faltante, job diario con el banco simulado |

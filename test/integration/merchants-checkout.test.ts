@@ -62,6 +62,68 @@ test('idempotencia durable en BD: misma llave devuelve el mismo intent aunque Re
   assert.equal(new Set(concurrent.map((p) => p.id)).size, 1);
 });
 
+
+test('onboarding ampliado guarda datos estaticos para e-commerce sin aceptar datos de tarjeta', async () => {
+  const m = await ctx.merchant('acct_iso_onboarding', 'pending_kyc');
+  const payload = {
+    legal_name: 'Comercio ISO C.A.',
+    representative_name: 'Luis Rangel',
+    representative_id: 'V-12345678',
+    address_line1: 'Av. Principal, Edif. Centro, Local 4',
+    address_line2: 'Piso PB',
+    city: 'Caracas',
+    state: 'Distrito Capital',
+    country_code: 'VE',
+    postal_code: '1010',
+    phone: '0414-1234567',
+    support_email: 'soporte@comercio.example',
+    business_activity: 'Comercio electronico de alimentos',
+    ecommerce_url: 'https://tienda.comercio.example',
+    website: 'https://comercio.example',
+    statement_descriptor: 'COMERCIO ISO',
+    bank_name: 'Banesco',
+    bank_account: '01340000000000001234',
+  };
+  const merchant = await ctx.merchants.submitKyc(m, payload);
+  assert.ok(merchant.kyc_submitted_at);
+
+  const review = await ctx.merchants.getForReview(m);
+  assert.equal(review.kyc_data.city, 'Caracas');
+  assert.equal(review.kyc_data.country_code, 'VE');
+  assert.equal(review.kyc_data.statement_descriptor, 'COMERCIO ISO');
+  assert.equal(review.kyc_data.ecommerce_url, 'https://tienda.comercio.example');
+  assert.equal(review.kyc_data.pan, undefined);
+  assert.equal(review.iso8583_status, null);
+
+  await assert.rejects(ctx.merchants.submitKyc(m, { ...payload, ecommerce_url: 'http://inseguro.example' }),
+    (e: { code?: string; extra?: { param?: string } }) => e.code === 'kyc_invalid' && e.extra?.param === 'ecommerce_url');
+});
+
+test('perfil ISO8583 solo guarda identificadores provisionados del adquirente y aplica defaults e-commerce', async () => {
+  const m = await ctx.merchant('acct_iso_profile', 'pending_kyc');
+  const p = await ctx.merchants.setIso8583Profile(m, {
+    status: 'provisioned',
+    mcc: '5812',
+    acquirer_merchant_id: 'MID123456789',
+    terminal_id: 'ECOM0001',
+    acquiring_institution_id: '12345678901',
+  });
+  assert.equal(p.iso8583_status, 'provisioned');
+  assert.equal(p.mcc, '5812');
+  assert.equal(p.acquirer_merchant_id, 'MID123456789');
+  assert.equal(p.terminal_id, 'ECOM0001');
+  assert.equal(p.currency_numeric, '928');
+  assert.equal(p.pos_entry_mode, '090');
+  assert.equal(p.pos_condition_code, '59');
+
+  await assert.rejects(ctx.merchants.setIso8583Profile(m, {
+    mcc: '58A2',
+    acquirer_merchant_id: 'MID123',
+    terminal_id: 'ECOM0001',
+    acquiring_institution_id: '1234',
+  }), (e: { code?: string; extra?: { param?: string } }) => e.code === 'iso8583_profile_invalid' && e.extra?.param === 'mcc');
+});
+
 test('vencimiento: un link abandonado se cancela; uno que espera transferencia no', async () => {
   const m = await ctx.merchant('acct_exp');
   const idle = await ctx.payments.create(m, { amount: 1000n, currency: 'USD', expiresInSeconds: 60 });
@@ -139,4 +201,19 @@ test('corte de lote: sin regla de split o bajo el mínimo, el comercio espera al
   assert.equal(leg.rate, '36.5');
   assert.ok(leg.spread > 0n);
   assert.deepEqual(r2.skipped, [{ merchantId: noRule, reason: 'no_settlement_rule' }]);
+});
+
+test('return_url: se guarda al crear, el checkout la ve y una llave idempotente no la cambia', async () => {
+  const m = await ctx.merchant('acct_return');
+  const { toApi, toCheckoutApi } = await import('../../src/payment-intents/payment-intent.repository');
+  const pi = await ctx.payments.create(m, { amount: 1500n, currency: 'USD', idempotencyKey: 'woo-1-1',
+    returnUrl: 'https://tienda.test/?wc-api=paguara&order_id=1', metadata: { order_id: '1' } });
+  assert.equal(pi.return_url, 'https://tienda.test/?wc-api=paguara&order_id=1');
+  assert.equal(toApi(pi).return_url, pi.return_url);
+  assert.equal(toCheckoutApi(pi).return_url, pi.return_url);
+  const again = await ctx.payments.create(m, { amount: 1500n, currency: 'USD', idempotencyKey: 'woo-1-1', returnUrl: 'https://otra.test/' });
+  assert.equal(again.id, pi.id);
+  assert.equal(again.return_url, pi.return_url);
+  const none = await ctx.payments.create(m, { amount: 1500n, currency: 'USD' });
+  assert.equal(none.return_url, null);
 });
