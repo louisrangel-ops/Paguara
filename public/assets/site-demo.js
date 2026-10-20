@@ -86,7 +86,7 @@
       can_toggle: st === 'active' || st === 'disabled', can_request: st === 'not_granted' };
     return c ? Object.assign(v, { currency: c.cur, fee_bps: c.bps, fixed_usd: String(c.fixed), tax_bps: c.tax, igtf_bps: c.igtf, custom_pricing: false, min_amount: null, max_amount: null }) : v;
   }
-  let loggedIn = true;
+  let loggedIn = false;
 
   const PRODUCTS = [
     ['Pedido #{n}: 1 kg de café de Caripe, molido', 'USD', [1800, 2500]],
@@ -362,7 +362,7 @@
     }],
     ['POST', /^\/account\/kyc$/, (m, b) => {
       need();
-      const req = ['legal_name', 'representative_name', 'representative_id', 'address', 'phone', 'bank_name', 'bank_account'];
+      const req = ['legal_name', 'representative_name', 'representative_id', 'address_line1', 'city', 'state', 'country_code', 'phone', 'support_email', 'business_activity', 'ecommerce_url', 'statement_descriptor', 'bank_name', 'bank_account'];
       if (req.some((k) => !b[k])) fail(422, 'validation_error', 'Completa todos los datos de la empresa.');
       merchant.kyc_submitted_at = new Date().toISOString();
       return Object.assign({}, merchant);
