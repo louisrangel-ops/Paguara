@@ -151,8 +151,14 @@ export class PaymentIntentsService {
       let quote: FrozenQuote | null = null;
       let chargeAmount = pi.amount;
       if (pi.currency !== chargeCurrency) {
+        const usdVes = [pi.currency, chargeCurrency].includes('USD') && [pi.currency, chargeCurrency].includes('VES');
+        if (usdVes && fxSource && fxSource !== 'BCV') {
+          throw new ApiError(400, 'fx_source_not_allowed',
+            'Las conversiones USD/VES usan obligatoriamente la tasa oficial vigente del BCV.',
+            'invalid_request_error', { param: 'fx_source', allowed: 'BCV' });
+        }
         quote = await this.fx.freezeQuote(c, pi.currency, chargeCurrency,
-          fxSource ?? defaultRateSource(pi.currency, chargeCurrency), cfg.quoteTtlSeconds);
+          usdVes ? 'BCV' : (fxSource ?? defaultRateSource(pi.currency, chargeCurrency)), cfg.quoteTtlSeconds);
         chargeAmount = convertWithQuote(pi.amount, pi.currency, chargeCurrency, quote);
       }
 
@@ -319,7 +325,8 @@ export class PaymentIntentsService {
     if (piQuote && [piQuote.base, piQuote.quote].includes('USD') && [piQuote.base, piQuote.quote].includes(to)) {
       return { amount: convertWithQuote(usdMinor, 'USD', to, piQuote), quoteId: piQuote.id };
     }
-    const q = await this.fx.freezeQuote(c, 'USD', to, defaultRateSource('USD', to), ttl);
+    const q = await this.fx.freezeQuote(c, 'USD', to,
+      to === 'VES' ? 'BCV' : defaultRateSource('USD', to), ttl);
     return { amount: convertWithQuote(usdMinor, 'USD', to, q), quoteId: q.id };
   }
 
