@@ -16,6 +16,7 @@ reales) y `.env.development` (sandbox local, ficticio, versionado a propósito).
 | `SECRETS_ENCRYPTION_KEY` | vacío | 64 caracteres hex (`openssl rand -hex 32`). Cifra con AES-256-GCM los `whsec_` en la base. **Obligatoria desplegada**; sin ella (solo local) se guardan en claro | `secret-box.ts`, `secrets-check.ts` |
 | `PAYOUT_APPROVALS_REQUIRED` | `2` | Personas distintas que aprueban cada liquidación antes de pagarla. Con `LIVEMODE=true`, 2 o más | `settlements.service.ts`, `secrets-check.ts` |
 | `RATE_LIMIT_API_PER_MIN` | `600` | Peticiones por minuto por llave en `/v1` | `hardening.ts` |
+| `RATE_LIMIT_API_IP_PER_MIN` | `3000` | Tope por IP en `/v1`, además del de la llave (el límite corre antes de validar la llave) | `hardening.ts` |
 | `RATE_LIMIT_CHECKOUT_PER_MIN` | `120` | Por IP en `/v1/checkout` | `hardening.ts` |
 | `RATE_LIMIT_DASHBOARD_PER_MIN` | `300` | Por IP en `/api` (panel y público) | `hardening.ts` |
 | `LIVEMODE` | `false` | `true` = producción (solo llaves live). Cada modo con su propia base | `api-key.guard.ts` |

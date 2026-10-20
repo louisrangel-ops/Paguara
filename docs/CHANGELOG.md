@@ -14,7 +14,7 @@ Cada migración nueva se anota con su número.
 - [Liquidaciones] Las instrucciones nacen `on_hold`; `GET /internal/payouts/pending` y `POST /internal/payouts/:id/approve` las liberan con `PAYOUT_APPROVALS_REQUIRED` personas distintas (2 por defecto) (#11).
 - [API] Operadores con token propio `opk_…` (`/internal/operators`, `/internal/whoami`), roles `master`/`operator` por ruta (403 `insufficient_role`); el token de sistema solo sirve a los workers y para crear el primer maestro; se quita `actor` del cuerpo (#11).
 - [API] Habilitar un método a un comercio exige `contract_ref` (400 `contract_required`); en el sandbox cada comercio nuevo recibe todos los métodos para integrar (#11).
-- [Seguridad] Puerto interno (`INTERNAL_PORT`) para `/internal` y `/admin` (404 en el público), cabeceras CSP/HSTS/nosniff/frame, límite de peticiones en Redis (429 `rate_limited`), secretos de webhooks cifrados con AES-256-GCM (`SECRETS_ENCRYPTION_KEY`) (#11).
+- [Seguridad] Puerto interno (`INTERNAL_PORT`) para `/internal` y `/admin` (404 en el público), cabeceras CSP/HSTS/nosniff/frame, límite de peticiones en Redis por llave y por IP (429 `rate_limited`), secretos de webhooks cifrados con AES-256-GCM (`SECRETS_ENCRYPTION_KEY`) (#11).
 - [Rieles] Con `LIVEMODE=true` la API no arranca si queda un riel de prueba (#11).
 - [Config] `SECRETS_ENCRYPTION_KEY`, `INTERNAL_PORT`, `PAYOUT_APPROVALS_REQUIRED`, `RATE_LIMIT_*`; en live se exigen las tres primeras (#11).
 - [Web] Panel del comercio con "Cuenta de liquidación" en bolívares; panel interno con login por operador, bandeja de aprobaciones, contrato al habilitar y alta de operadores; docs públicas con la sección de pruebas (#11).

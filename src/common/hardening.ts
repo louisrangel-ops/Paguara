@@ -68,36 +68,43 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex').slice(0,
 /**
  * Cuántas peticiones por minuto se permiten y a quién se cuentan. La API del
  * comercio cuenta por llave (así un comercio no frena a otro detrás del mismo
- * NAT); el checkout, el panel y los links, por IP. Las rutas internas no tienen
- * límite: están fuera de internet.
+ * NAT) y además por IP con un tope más alto: el límite corre antes de validar
+ * la llave, y sin el de IP bastaría con mandar una llave inventada distinta en
+ * cada petición para no tener límite. El checkout y el panel, por IP. Las rutas
+ * internas no tienen límite: están fuera de internet.
  */
-export function rateRule(req: Pick<Request, 'path' | 'ip' | 'header'>, env: NodeJS.ProcessEnv = process.env): RateRule | null {
+export function rateRules(req: Pick<Request, 'path' | 'ip' | 'header'>, env: NodeJS.ProcessEnv = process.env): RateRule[] {
   const n = (k: string, d: number) => { const v = Number(env[k]); return Number.isInteger(v) && v > 0 ? v : d; };
   const ip = req.ip ?? 'unknown';
   const p = req.path;
-  if (isInternalPath(p) || p === '/health') return null;
-  if (p.startsWith('/v1/checkout/')) return { bucket: `ip:${ip}:checkout`, limit: n('RATE_LIMIT_CHECKOUT_PER_MIN', 120) };
+  if (isInternalPath(p) || p === '/health') return [];
+  if (p.startsWith('/v1/checkout/')) return [{ bucket: `ip:${ip}:checkout`, limit: n('RATE_LIMIT_CHECKOUT_PER_MIN', 120) }];
   if (p.startsWith('/v1/')) {
     const auth = req.header('authorization') ?? '';
-    return { bucket: auth ? `key:${sha(auth)}` : `ip:${ip}:api`, limit: n('RATE_LIMIT_API_PER_MIN', 600) };
+    const perIp = { bucket: `ip:${ip}:api`, limit: n('RATE_LIMIT_API_IP_PER_MIN', 3000) };
+    return auth ? [{ bucket: `key:${sha(auth)}`, limit: n('RATE_LIMIT_API_PER_MIN', 600) }, perIp] : [perIp];
   }
-  if (p.startsWith('/api/')) return { bucket: `ip:${ip}:dashboard`, limit: n('RATE_LIMIT_DASHBOARD_PER_MIN', 300) };
-  return null;
+  if (p.startsWith('/api/')) return [{ bucket: `ip:${ip}:dashboard`, limit: n('RATE_LIMIT_DASHBOARD_PER_MIN', 300) }];
+  return [];
 }
 
 /** Ventana fija de un minuto en Redis. Si Redis falla se deja pasar (y se registra): mejor lento que caído. */
 export function rateLimit(redis: Redis, env: NodeJS.ProcessEnv = process.env) {
   const log = new Logger('RateLimit');
   return async (req: Request, res: Response, next: NextFunction) => {
-    const rule = rateRule(req, env);
-    if (!rule) return next();
+    const rules = rateRules(req, env);
+    if (!rules.length) return next();
     const window = Math.floor(Date.now() / 60_000);
-    const key = `rl:${rule.bucket}:${window}`;
     try {
-      const [[, count]] = (await redis.multi().incr(key).pexpire(key, 61_000).exec()) as [[Error | null, number]];
-      res.setHeader('RateLimit-Limit', String(rule.limit));
-      res.setHeader('RateLimit-Remaining', String(Math.max(0, rule.limit - count)));
-      if (count > rule.limit) {
+      const tx = redis.multi();
+      for (const r of rules) { const key = `rl:${r.bucket}:${window}`; tx.incr(key).pexpire(key, 61_000); }
+      const out = (await tx.exec()) as [Error | null, number][];
+      // El cupo que se informa es el más ajustado de los que aplican
+      const left = rules.map((r, i) => ({ limit: r.limit, remaining: r.limit - out[i * 2][1] }))
+        .reduce((a, b) => (b.remaining < a.remaining ? b : a));
+      res.setHeader('RateLimit-Limit', String(left.limit));
+      res.setHeader('RateLimit-Remaining', String(Math.max(0, left.remaining)));
+      if (left.remaining < 0) {
         res.setHeader('Retry-After', String(60 - Math.floor((Date.now() / 1000) % 60)));
         res.status(429).json({ error: { type: 'rate_limit_error', code: 'rate_limited', message: 'Demasiadas peticiones; espera un momento y reintenta' } });
         return;

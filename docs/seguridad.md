@@ -56,7 +56,8 @@ por despliegue. Detalle en [api.md](api.md#llaves-api).
   `Cross-Origin-Opener-Policy: same-origin` y, salvo con `COOKIE_SECURE=false`, `Strict-Transport-Security` de un año.
   Sin `X-Powered-By`. Las páginas que ya fijaban `no-referrer` lo siguen haciendo.
 - **Límite de peticiones** con ventana de un minuto en Redis: `/v1` 600 por llave (la llave se cuenta por su hash,
-  no se guarda), `/v1/checkout` 120 por IP, `/api` 300 por IP. Al pasarse: 429 `rate_limited` con `Retry-After` y
+  no se guarda) y 3000 por IP (el límite corre antes de validar la llave: sin el de IP, una llave inventada distinta en
+  cada petición lo esquivaría), `/v1/checkout` 120 por IP, `/api` 300 por IP. Al pasarse: 429 `rate_limited` con `Retry-After` y
   `RateLimit-Limit`/`RateLimit-Remaining`. Si Redis falla se deja pasar y se registra. `/internal` y `/health` no se limitan.
 - **Rutas internas fuera de internet**: con `INTERNAL_PORT`, `/internal` y `/admin` responden solo en ese puerto (red
   privada del hosting o VPN); en el público dan 404 como si no existieran.

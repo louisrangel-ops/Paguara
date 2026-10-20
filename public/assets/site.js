@@ -931,7 +931,7 @@
           ['Cualquier otro', 'Pago aprobado'],
         ], 'Valores de prueba'),
         P('Las transferencias (Pago Móvil P2P, Zelle, USDT, efectivo) quedan en ', code('requires_action'), ' hasta que el sandbox simula la llegada del dinero. Desde ', el('a', { href: '#/dashboard/desarrolladores?tab=webhooks', text: 'Desarrolladores' }), ' puedes enviar un evento de prueba a tu endpoint.'),
-        P('Límite de peticiones: 600 por minuto por llave en la API y 120 por minuto por IP en el checkout. Si te pasas, la respuesta es ', code('429 rate_limited'), ' con la cabecera ', code('Retry-After'), ' en segundos.'),
+        P('Límite de peticiones: 600 por minuto por llave (y 3000 por IP) en la API y 120 por minuto por IP en el checkout. Si te pasas, la respuesta es ', code('429 rate_limited'), ' con la cabecera ', code('Retry-After'), ' en segundos.'),
       ]),
     ]);
     main.replaceChildren(el('div', { class: 'wrap docs' }, [nav, body]));
