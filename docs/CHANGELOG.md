@@ -11,7 +11,7 @@ Cada migración nueva se anota con su número.
 
 - [Rieles] Base ISO 8583 en `src/payment-intents/rails/iso8583/`: codec ASCII de perfil de prueba y simulador emisor en memoria (autorización, rechazo, timeout, reversos, conciliación). No es un riel registrado ni toca `LIVEMODE` (#13).
 - [CI] Workflow `iso8583-tests.yml`: typecheck y pruebas unitarias en PRs que tocan el codec o el simulador (#13).
-- [Docs] `iso8583-acquirer-integration.md` (requisitos del adquirente y próximos pasos, #13). La documentación de #13 en métodos de pago, CI, pruebas e índice; el riel sandbox ya no se describe como activo en `LIVEMODE=true` y webhooks aclara que el secreto se guarda cifrado (#11); entradas de #12 con su número (#15).
+- [Docs] `iso8583-acquirer-integration.md` (requisitos del adquirente y próximos pasos, #13). La documentación de #13 en métodos de pago, CI, pruebas e índice; el riel sandbox ya no se describe como activo en `LIVEMODE=true` y webhooks aclara que el secreto se guarda cifrado cuando hay `SECRETS_ENCRYPTION_KEY` (#11); entradas de #12 con su número (#15).
 
 - [Docs] Documentos legales en borrador como páginas del sitio (`#/legal/...`): términos, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable; textos en `public/assets/legal.js`. Ver [legal.md](legal.md) (#12).
 - [Esquema] Migración 011: `dashboard.legal_acceptances`, append-only, constancia de la versión aceptada con IP y navegador (#12).

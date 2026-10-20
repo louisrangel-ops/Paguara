@@ -42,8 +42,9 @@ El worker corre dentro de la API (`onModuleInit`) cada `WEBHOOK_POLL_MS` (2000 m
 Webhook-Signature: t=<unix>,v1=<hex>
 v1 = HMAC_SHA256(secret, "<t>.<cuerpo crudo>")
 ```
-`secret` es el `whsec_…` del endpoint (`signPayload`). En la base se guarda cifrado con `sealSecret` y se descifra con
-`openSecret` al firmar o revelarlo ([seguridad.md](seguridad.md)). El comercio debe verificar la firma sobre el cuerpo crudo y rechazar `t` muy antiguos.
+`secret` es el `whsec_…` del endpoint (`signPayload`). Con `SECRETS_ENCRYPTION_KEY` definida (obligatoria al desplegar)
+se guarda cifrado con `sealSecret` y se descifra con `openSecret` al firmar o revelarlo; sin ella, en local, se guarda
+en claro ([seguridad.md](seguridad.md)). El comercio debe verificar la firma sobre el cuerpo crudo y rechazar `t` muy antiguos.
 
 ## Protección SSRF
 

@@ -87,8 +87,9 @@ abre sockets, no está registrado en `buildRails` y `card_national` sigue en el 
   del perfil, largos o caracteres inválidos, campos numéricos con letras, mensajes truncados y bytes sobrantes.
 - `Iso8583AcquirerSimulator`: emisor en memoria con perfil configurable (`SIMULATOR_PROFILE`: moneda 840, terminal
   `ECOM0001`). Responde `0100`→`0110` (aprobado `00` con autorización, rechazo con `declineCode`), `0400`→`0410` y
-  `0420`→`0430` (reverso; `25` si no encuentra la original). Un `0100` repetido con el mismo STAN/RRN devuelve la
-  misma respuesta; con otros datos, error. `timeoutStan` simula un timeout de resultado desconocido
+  `0420`→`0430` (reverso; `25` si no encuentra la original). Un `0100` repetido con el mismo STAN/RRN no crea otra
+  transacción: responde según el estado actual del diario (`00` si sigue aprobada, `94` si ya se reversó). Si cambia
+  DE 3, 4, 41, 42 o 49 da error; los demás campos no se comparan. `timeoutStan` simula un timeout de resultado desconocido
   (`SimulatedTimeout`). `reconcile()` resume aprobados, rechazados, reversados y el neto aprobado.
 - Pruebas: `test/unit/iso8583-codec.test.ts` y `test/unit/iso8583-simulator.test.ts`.
 
