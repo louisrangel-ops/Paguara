@@ -78,14 +78,6 @@ export class OperatorsService {
     });
   }
 
-  async revoke(id: string, by: Operator) {
-    if (!hasOperatorPermission(by, 'operators:manage')) throw new ApiError(403, 'insufficient_role', 'No tienes permiso para revocar operadores');
-    if (id === by.id) throw new ApiError(409, 'cannot_revoke_self', 'No puedes revocarte a ti mismo');
-    const res = await this.pool.query('UPDATE platform.operators SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [id]);
-    if (res.rowCount === 0) throw new ApiError(404, 'resource_missing', `No existe el operador activo ${id}`);
-    return { id, revoked: true };
-  }
-
   async changeRole(id: string, role: OperatorRole, by: Operator) {
     if (!hasOperatorPermission(by, 'operators:manage')) throw new ApiError(403, 'insufficient_role', 'No tienes permiso para cambiar roles');
     if (!ROLES.includes(role)) throw new ApiError(400, 'role_invalid', 'Rol interno inválido');
