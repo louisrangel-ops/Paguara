@@ -35,8 +35,10 @@ test('flujo completo: precio en USD, cobro por Pago Móvil en VES a tasa BCV con
   assert.equal(pi.tax_amount, 905n);         // IVA 16 % de la comisión
   assert.equal(pi.net_amount, 358438n);
 
-  // La tasa sube DESPUÉS de cotizar: el cobro respeta la tasa congelada
-  await ctx.fx.recordRate('USD', 'VES', '40', 'BCV');
+  // Una tasa BCV futura no sustituye la tasa oficial vigente del día ya congelada.
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  await ctx.fx.recordRate('USD', 'VES', '40', 'BCV', new Date(), tomorrow.toISOString().slice(0, 10));
   pi = await payments.confirm('m_1', pi.id, { phone: '04141234567', bank: '0102', otp: '123456' });
   assert.equal(pi.status, 'succeeded');
   assert.equal(pi.charge_amount, 365000n);
@@ -111,7 +113,7 @@ test('Pago Móvil P2P: requires_action con instrucciones; el matcher confirma de
   pi = await ctx.payments.confirm('m_2', pi.id, {});
   assert.equal(pi.status, 'requires_action');
   assert.equal(pi.next_action?.type, 'pago_movil_transfer');
-  assert.equal(pi.next_action?.amount, '100000'); // 25 USD × 40 (BCV vigente tras la prueba anterior) = 1.000,00 Bs
+  assert.equal(pi.next_action?.amount, '91250'); // 25 USD × 36,5 (BCV vigente del día) = 912,50 Bs
 
   // La tasa sigue congelada mientras se espera la transferencia
   assert.equal((await pgError(ctx.pool.query('UPDATE payments.payment_intents SET charge_amount = 1 WHERE id = $1', [pi.id]))).code, 'P0012');
