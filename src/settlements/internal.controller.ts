@@ -403,10 +403,17 @@ export class InternalController {
   }
 
   @Post('fx/rates')
-  async recordRate(@Req() req: InternalRequest, @Body() b: { base: string; quote: string; rate: string; source: string; observed_at?: string }) {
+  async recordRate(@Req() req: InternalRequest, @Body() b: { base: string; quote: string; rate: string; source: string; observed_at?: string; effective_date?: string }) {
     workerOr(req, 'workers:run');
-    const id = await this.fx.recordRate(currency(b.base), currency(b.quote), b.rate, b.source, b.observed_at ? new Date(b.observed_at) : undefined);
-    return { id };
+    if (b.source === 'BCV' && !b.effective_date) {
+      throw new ApiError(400, 'effective_date_required', 'La tasa BCV requiere effective_date YYYY-MM-DD', 'invalid_request_error', { param: 'effective_date' });
+    }
+    const id = await this.fx.recordRate(
+      currency(b.base), currency(b.quote), b.rate, b.source,
+      b.observed_at ? new Date(b.observed_at) : new Date(),
+      b.effective_date,
+    );
+    return { id, source: b.source, effective_date: b.effective_date ?? null };
   }
 
   /** Resultado de un riel: webhook del banco, match de Pago Móvil P2P, confirmaciones on-chain. */
