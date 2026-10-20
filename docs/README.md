@@ -19,6 +19,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote, split y spread |
 | [Configuración](configuracion.md) | Variables de entorno, una por una |
 | [Despliegue, pruebas y CI](despliegue.md) | Docker, Railway, migraciones, seed, dev-jobs, pruebas, CI |
+| [Web: diseño y movimiento](web.md) | Superficies web, proceso de diseño, reglas y presupuesto de las animaciones, cómo verificar un cambio visual |
 | [Seguridad](seguridad.md) | Secretos, llaves, sesiones, CSRF, límites de intentos, gitleaks |
 | [CHANGELOG técnico](CHANGELOG.md) | Historial de cambios técnicos por PR |
 

@@ -9,6 +9,11 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Web] Rediseño de todas las superficies con la misma paleta y logo: landing nueva (hero con el recibo sobre un mostrador verde, cinta de rieles, métodos agrupados por moneda, estados reales del pago), panel con transiciones cortas, checkout a dos columnas en pantallas anchas con métodos agrupados por moneda, y panel interno con barra superior, interruptores y contador de solicitudes (#8).
+- [Web] Sistema de movimiento sin librerías: clase `.motion` según `prefers-reduced-motion`, revelado con `IntersectionObserver`, contador, cinta CSS, borde de cabecera con `animation-timeline: scroll()` y View Transitions entre páginas públicas; ≈ 2,5 KB comprimidos (#8).
+- [Web] Google Fonts pedidas como rango variable (`wght@400..700`, `wght@500..600`); el panel interno carga también Spline Sans Mono (#8).
+- [Docs] `docs/web.md` (superficies, proceso de diseño, reglas y presupuesto de movimiento, verificación) y `DESIGN.md` con composición, tokens de movimiento y referencias de línea actualizadas (#8).
+
 - [Docs] Documentación de los PRs #4 y #6 en arquitectura, modelo de datos (migraciones 008 y 009), PaymentIntents, métodos de pago, API, webhooks, liquidaciones, seguridad y pruebas; `modulos-por-comercio.md` en el índice (#7).
 - [Docs] Documentación técnica en `docs/` (arquitectura, datos, ledger, PaymentIntents, FX, métodos de pago, API, webhooks, liquidaciones, configuración, despliegue, seguridad) y este CHANGELOG (#5).
 - [Docs] `CONTRIBUTING.md` y plantilla de PR: todo cambio de código, esquema, API o configuración actualiza la documentación y el CHANGELOG en el mismo PR (#5).

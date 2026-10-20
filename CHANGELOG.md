@@ -2,6 +2,11 @@
 
 Cada cambio de código, esquema, API o configuración se anota aquí en el mismo PR, con enlace a su documentación técnica.
 
+## 2026-10-20
+
+### Cambiado
+- **Rediseño de la web** con la misma paleta y logo: landing, documentación, panel, checkout y panel interno. Animaciones ligeras sin librerías que respetan `prefers-reduced-motion`. Ver [docs/web.md](docs/web.md) y [DESIGN.md](DESIGN.md).
+
 ## 2026-10-19
 
 ### Agregado
