@@ -14,11 +14,11 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 | `ledger` | Monedas, cuentas, asientos, partidas, saldos | 001, 004 |
 | `fx` | Tasas observadas y cotizaciones congeladas | 002 |
 | `payments` | PaymentIntents, transiciones, links de pago | 003, 005, 007, 008 |
-| `merchants` | Comercios, llaves API, reglas de liquidación, capacidades por comercio | 005, 007, 008 |
+| `merchants` | Comercios, llaves API, reglas de liquidación, capacidades por comercio y perfil ISO 8583 | 005, 007, 008, 012 |
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
 | `dashboard` | Usuarios del panel, sesiones y aceptación de documentos legales | 007, 011 |
 | `webhooks` | Endpoints, eventos (outbox) y entregas | 007 |
-| `platform` | Catálogo de métodos y módulos con su interruptor global | 008, 009 |
+| `platform` | Catálogo de métodos/módulos, operadores internos y auditoría RBAC | 008, 009, 010, 013 |
 
 ## Migraciones
 

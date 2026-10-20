@@ -9,6 +9,22 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Esquema] Migración 013: roles internos funcionales y `platform.operator_role_changes` append-only.
+- [Seguridad] RBAC del panel interno con permisos por endpoint y protección contra revocar/demover al último master.
+- [API] Directorio de comercios, detalle KYC/ISO 8583, cambio de rol de operadores y `whoami.permissions`.
+- [Web] `/admin` ampliado a consola integral: comercios, KYC, ISO 8583, métodos, llaves, liquidaciones y gestión de roles.
+- [Tests] Matriz RBAC interna cubierta por pruebas unitarias.
+- [Docs] Nueva guía [admin-panel-rbac.md](admin-panel-rbac.md).
+
+
+- [Web] `#/docs` exige sesión del comercio; se ocultan los enlaces de documentación en landing, navegación, pie y login hasta autenticar.
+- [Dashboard] Onboarding KYC ampliado con ubicación, soporte, actividad, URL e-commerce y descriptor; prohíbe usar el formulario para datos de tarjeta.
+- [Esquema] Migración 012: `merchants.iso8583_profiles` separa MCC/MID/TID/identificador adquirente y parámetros del perfil.
+- [API] `GET /internal/merchants/:id` para revisión y `POST /internal/merchants/:id/iso8583_profile` para provisionamiento técnico por el maestro.
+- [Docs] Nueva guía [merchant-onboarding-iso8583.md](merchant-onboarding-iso8583.md).
+
+
+
 
 - [Integraciones] Plugin de WooCommerce en `integraciones/woocommerce/paguara-woocommerce/`: redirección al checkout alojado, regreso a la tienda, webhooks firmados verificados y consulta del pago con la llave secreta, modo pruebas y checkout de bloques. Ver [integraciones/woocommerce.md](integraciones/woocommerce.md).
 - [API] `return_url` opcional al crear un PaymentIntent (400 `return_url_invalid`); viene en `PaymentIntent` y en la vista del checkout.

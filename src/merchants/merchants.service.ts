@@ -99,7 +99,44 @@ export class MerchantsService {
 
   async get(merchantId: string) {
     const { rows } = await this.pool.query(
-      `SELECT id, business_name, rif, status, kyc_submitted_at, created_at AS created FROM merchants.merchants WHERE id = $1`, [merchantId]);
+      `SELECT m.id, m.business_name, m.rif, m.status, m.kyc_submitted_at, m.created_at AS created,
+              COALESCE(i.status, 'pending') AS iso8583_profile_status
+         FROM merchants.merchants m
+         LEFT JOIN merchants.iso8583_profiles i ON i.merchant_id = m.id
+        WHERE m.id = $1`, [merchantId]);
+    if (!rows[0]) throw new ApiError(404, 'resource_missing', `No existe el comercio ${merchantId}`);
+    return rows[0];
+  }
+
+  async listForAdmin(q = '', status = '', limit = 50) {
+    const term = String(q ?? '').trim();
+    const st = String(status ?? '').trim();
+    const n = Math.max(1, Math.min(100, Number(limit) || 50));
+    if (st && !['pending_kyc','active','restricted','closed'].includes(st)) {
+      throw new ApiError(400, 'status_invalid', 'Estado de comercio inválido');
+    }
+    const { rows } = await this.pool.query(
+      `SELECT m.id, m.business_name, m.rif, m.status, m.kyc_submitted_at, m.created_at AS created,
+              COALESCE(i.status, 'pending') AS iso8583_profile_status
+         FROM merchants.merchants m
+         LEFT JOIN merchants.iso8583_profiles i ON i.merchant_id = m.id
+        WHERE ($1 = '' OR m.id ILIKE '%' || $1 || '%' OR m.business_name ILIKE '%' || $1 || '%' OR m.rif ILIKE '%' || $1 || '%')
+          AND ($2 = '' OR m.status = $2)
+        ORDER BY m.created_at DESC
+        LIMIT $3`,
+      [term, st, n]);
+    return rows;
+  }
+
+  /** Vista interna para revisión KYC/provisionamiento. Nunca se expone al checkout. */
+  async getForReview(merchantId: string) {
+    const { rows } = await this.pool.query(
+      `SELECT m.id, m.business_name, m.rif, m.status, m.kyc_data, m.kyc_submitted_at, m.created_at AS created,
+              i.status AS iso8583_status, i.mcc, i.acquirer_merchant_id, i.terminal_id,
+              i.acquiring_institution_id, i.currency_numeric, i.pos_entry_mode, i.pos_condition_code
+         FROM merchants.merchants m
+         LEFT JOIN merchants.iso8583_profiles i ON i.merchant_id = m.id
+        WHERE m.id = $1`, [merchantId]);
     if (!rows[0]) throw new ApiError(404, 'resource_missing', `No existe el comercio ${merchantId}`);
     return rows[0];
   }
@@ -111,22 +148,104 @@ export class MerchantsService {
     return this.get(merchantId);
   }
 
-  /** Datos para activar la cuenta. La aprobación (status = active) la hace el equipo de cumplimiento. */
+  /** Datos para activar la cuenta y perfilar e-commerce. No recibe datos de tarjetas. */
   async submitKyc(merchantId: string, data: Record<string, unknown>) {
-    const fields = ['legal_name', 'representative_name', 'representative_id', 'address', 'phone', 'bank_name', 'bank_account'];
-    const clean: Record<string, string> = {};
-    for (const f of fields) {
-      const v = typeof data[f] === 'string' ? (data[f] as string).trim() : '';
-      if (!v || v.length > 200) throw new ApiError(400, 'kyc_invalid', `Falta o es inválido el campo ${f}`, 'invalid_request_error', { param: f });
-      clean[f] = v;
+    const value = (key: string, max = 200) => {
+      const v = typeof data[key] === 'string' ? (data[key] as string).trim() : '';
+      if (!v || v.length > max) throw new ApiError(400, 'kyc_invalid', `Falta o es inválido el campo ${key}`, 'invalid_request_error', { param: key });
+      return v;
+    };
+    const optional = (key: string, max = 200) => {
+      const v = typeof data[key] === 'string' ? (data[key] as string).trim() : '';
+      if (v.length > max) throw new ApiError(400, 'kyc_invalid', `Es inválido el campo ${key}`, 'invalid_request_error', { param: key });
+      return v || undefined;
+    };
+
+    const clean: Record<string, string> = {
+      legal_name: value('legal_name', 120),
+      representative_name: value('representative_name', 120),
+      representative_id: value('representative_id', 16).toUpperCase(),
+      address_line1: value('address_line1', 160),
+      city: value('city', 64),
+      state: value('state', 64),
+      country_code: value('country_code', 2).toUpperCase(),
+      phone: value('phone', 32),
+      support_email: value('support_email', 160).toLowerCase(),
+      business_activity: value('business_activity', 160),
+      ecommerce_url: value('ecommerce_url', 240),
+      statement_descriptor: value('statement_descriptor', 22),
+      bank_name: value('bank_name', 120),
+      bank_account: value('bank_account', 32).replace(/[\s-]/g, ''),
+    };
+    for (const [k, max] of [['address_line2', 160], ['postal_code', 16], ['website', 240]] as const) {
+      const v = optional(k, max);
+      if (v) clean[k] = v;
     }
-    if (!/^\d{20}$/.test(clean.bank_account.replace(/[\s-]/g, ''))) {
+
+    if (!/^[VE]-?\d{6,9}$/i.test(clean.representative_id)) {
+      throw new ApiError(400, 'kyc_invalid', 'La cédula del representante no es válida', 'invalid_request_error', { param: 'representative_id' });
+    }
+    if (!/^[A-Z]{2}$/.test(clean.country_code)) {
+      throw new ApiError(400, 'kyc_invalid', 'country_code debe usar ISO 3166-1 alpha-2, por ejemplo VE', 'invalid_request_error', { param: 'country_code' });
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean.support_email)) {
+      throw new ApiError(400, 'kyc_invalid', 'El correo de soporte no es válido', 'invalid_request_error', { param: 'support_email' });
+    }
+    for (const field of ['ecommerce_url', 'website']) {
+      if (!clean[field]) continue;
+      try {
+        const u = new URL(clean[field]);
+        if (u.protocol !== 'https:') throw new Error();
+      } catch {
+        throw new ApiError(400, 'kyc_invalid', `${field} debe ser una URL https válida`, 'invalid_request_error', { param: field });
+      }
+    }
+    if (!/^[\x20-\x7e]{5,22}$/.test(clean.statement_descriptor) || !/[A-Za-z]/.test(clean.statement_descriptor)) {
+      throw new ApiError(400, 'kyc_invalid', 'El descriptor debe tener 5 a 22 caracteres imprimibles y al menos una letra', 'invalid_request_error', { param: 'statement_descriptor' });
+    }
+    if (!/^\d{20}$/.test(clean.bank_account)) {
       throw new ApiError(400, 'kyc_invalid', 'La cuenta bancaria debe tener 20 dígitos', 'invalid_request_error', { param: 'bank_account' });
     }
+
+    // Alias legible para procesos existentes y revisión humana.
+    clean.address = [clean.address_line1, clean.address_line2, clean.city, clean.state, clean.postal_code, clean.country_code].filter(Boolean).join(', ');
+
     await this.pool.query(
       `UPDATE merchants.merchants SET kyc_data = $2, kyc_submitted_at = now(), updated_at = now() WHERE id = $1`,
       [merchantId, JSON.stringify(clean)]);
     return this.get(merchantId);
+  }
+
+  /** Identificadores ISO 8583 asignados por el adquirente/plataforma; el comercio no puede fijarlos. */
+  async setIso8583Profile(merchantId: string, data: Record<string, unknown>) {
+    await this.get(merchantId);
+    const text = (key: string, pattern: RegExp, required = true) => {
+      const v = typeof data[key] === 'string' ? (data[key] as string).trim() : '';
+      if ((!v && required) || (v && !pattern.test(v))) {
+        throw new ApiError(400, 'iso8583_profile_invalid', `Campo ISO 8583 inválido: ${key}`, 'invalid_request_error', { param: key });
+      }
+      return v || null;
+    };
+    const status = text('status', /^(pending|provisioned|suspended)$/, false) ?? 'pending';
+    const mcc = text('mcc', /^\d{4}$/);
+    const mid = text('acquirer_merchant_id', /^[\x20-\x7e]{1,15}$/);
+    const tid = text('terminal_id', /^[\x20-\x7e]{1,8}$/);
+    const acquirer = text('acquiring_institution_id', /^\d{1,11}$/);
+    const currencyNumeric = text('currency_numeric', /^\d{3}$/, false) ?? '928';
+    const posEntryMode = text('pos_entry_mode', /^\d{3}$/, false) ?? '090';
+    const posConditionCode = text('pos_condition_code', /^\d{2}$/, false) ?? '59';
+
+    await this.pool.query(
+      `INSERT INTO merchants.iso8583_profiles
+         (merchant_id, status, mcc, acquirer_merchant_id, terminal_id, acquiring_institution_id, currency_numeric, pos_entry_mode, pos_condition_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (merchant_id) DO UPDATE SET
+         status=EXCLUDED.status, mcc=EXCLUDED.mcc, acquirer_merchant_id=EXCLUDED.acquirer_merchant_id,
+         terminal_id=EXCLUDED.terminal_id, acquiring_institution_id=EXCLUDED.acquiring_institution_id,
+         currency_numeric=EXCLUDED.currency_numeric, pos_entry_mode=EXCLUDED.pos_entry_mode,
+         pos_condition_code=EXCLUDED.pos_condition_code, updated_at=now()`,
+      [merchantId, status, mcc, mid, tid, acquirer, currencyNumeric, posEntryMode, posConditionCode]);
+    return this.getForReview(merchantId);
   }
 
   async revokeApiKey(merchantId: string, keyId: string) {

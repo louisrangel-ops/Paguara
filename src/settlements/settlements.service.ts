@@ -24,7 +24,8 @@ export function payoutApprovalsRequired(env: NodeJS.ProcessEnv = process.env): n
   return Number.isInteger(n) && n >= 1 ? n : 2;
 }
 
-export interface Operator { id: string; name: string; role: 'master' | 'operator' }
+export type OperatorRole = 'master' | 'operator' | 'compliance' | 'operations' | 'treasury' | 'support' | 'auditor';
+export interface Operator { id: string; name: string; role: OperatorRole }
 
 export interface CutoffOptions {
   sourceCurrency: Currency;

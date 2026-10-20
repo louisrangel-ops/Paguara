@@ -67,10 +67,10 @@ por despliegue. Detalle en [api.md](api.md#llaves-api).
 
 - Cada persona entra con **su propio token** (`opk_` + 48 hex; en `platform.operators` solo su SHA-256). El
   `INTERNAL_API_TOKEN` es de los procesos automáticos: el panel no lo acepta.
-- Roles: **maestro** (KYC, habilitar métodos por contrato, precios y límites, interruptores, llaves y cuentas de
-  liquidación de un comercio, aportes de tesorería, alta y baja de operadores) y **operador** (ver bandejas y aprobar
-  liquidaciones). El token de sistema hace lo de los workers (tasas, resultados de rieles, conciliación, cortes,
-  vencimientos) y solo puede crear al primer maestro. Fuera de rol: 403 `insufficient_role`.
+- RBAC por permisos: **master** (superadmin), **compliance**, **operations**, **treasury**, **support**, **auditor** y
+  **operator** legado. La API valida el permiso aunque la interfaz oculte la acción. `GET /internal/whoami` devuelve
+  los permisos efectivos. El master crea, reasigna o revoca operadores; no puede dejar la plataforma sin otro master.
+  El token de sistema se reserva a workers y al bootstrap del primer master. Ver [admin-panel-rbac.md](admin-panel-rbac.md).
 - La auditoría (`merchants.capability_changes.actor`) guarda `platform:<nombre del operador>`, que el servidor saca del
   token (ya no lo escribe la persona).
 - **Métodos por contrato**: ningún método se le da solo a un comercio nuevo en producción (`CHECK
@@ -96,6 +96,5 @@ app o un `UPDATE` manual no puede descuadrar el ledger, editar un saldo ni cambi
 
 - Llave de cifrado en un KMS con rotación (hoy: variable de entorno) y script para volver a cifrar los secretos viejos.
 - Doble factor (2FA) para el panel del comercio y para los operadores; pedirlo también al cambiar la cuenta de liquidación.
-- Revisión de KYC desde el panel interno (hoy: `POST /internal/merchants/:id/status`).
 - Recuperación de contraseña e invitación de usuarios; permisos por rol en el resto del panel.
 - Conciliación bancaria diaria contra el ledger, alertas y prueba de penetración externa antes de cobrar dinero real.
