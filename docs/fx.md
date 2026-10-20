@@ -1,6 +1,6 @@
 # Tasas de cambio (FX)
 
-Código: `src/fx/fx.service.ts`, `src/fx/fx.math.ts`, `src/common/money.ts`. Esquema: migración 002.
+Código: `src/fx/fx.service.ts`, `src/fx/fx.math.ts`, `src/common/money.ts`. Esquema: migraciones 002 y 014.
 
 ## Conceptos
 
@@ -12,17 +12,14 @@ Código: `src/fx/fx.service.ts`, `src/fx/fx.math.ts`, `src/common/money.ts`. Esq
 
 ## Registrar una tasa
 
-`POST /internal/fx/rates {base, quote, rate, source, observed_at?}` → `FxService.recordRate`. La tasa es un string
-decimal (`"36.5"`) con hasta 12 decimales.
+`POST /internal/fx/rates {base, quote, rate, source, observed_at?, effective_date?}` → `FxService.recordRate`. La tasa es un string decimal con hasta 12 decimales. Cuando `source = BCV`, `effective_date` (`YYYY-MM-DD`) es obligatoria y representa la fecha oficial de vigencia publicada por el BCV.
 
 **Pendiente:** el job real que lea BCV, Binance P2P y el exchange. En desarrollo, `dev-jobs` carga tasas **fijas**
 (`DEV_FX_RATES`) cada `FX_REFRESH_SECONDS` ([configuracion.md](configuracion.md)).
 
 ## Congelar una cotización
 
-`FxService.freezeQuote(client, a, b, source, ttlSeconds)` toma la tasa más reciente de esa fuente para el par
-**en cualquier dirección**, con antigüedad menor que `FX_MAX_RATE_AGE_SECONDS` (6 h por defecto). Si no hay,
-lanza `RateUnavailableError` → 503 `fx_rate_unavailable`.
+`FxService.freezeQuote(client, a, b, source, ttlSeconds)` toma la tasa aplicable al par en cualquier dirección. Para USD/VES, usa obligatoriamente `BCV` y selecciona la última tasa oficial con `effective_date <=` la fecha actual de Venezuela (`America/Caracas`). Para otras fuentes aplica `FX_MAX_RATE_AGE_SECONDS` (6 h por defecto). Si no hay una tasa válida, lanza `RateUnavailableError` → 503 `fx_rate_unavailable`.
 
 Fuente por defecto (`defaultRateSource`, `payment-methods.ts`):
 
@@ -32,7 +29,7 @@ Fuente por defecto (`defaultRateSource`, `payment-methods.ts`):
 | USD/USDT | `EXCHANGE` |
 | Cualquier otro (USD/VES…) | `BCV` |
 
-En la API v1, `attach` acepta `fx_source` para elegir otra. **Decisión pendiente:** fuente por defecto configurable por comercio.
+En la API v1, `attach` puede aceptar `fx_source` para otros pares. En USD/VES cualquier fuente distinta de `BCV` se rechaza con `fx_source_not_allowed`; esta regla no es configurable por comercio.
 
 Dónde se congela:
 
@@ -54,5 +51,5 @@ Consecuencia: los métodos en VES con comisión fija necesitan una tasa `BCV` US
 ## Decisiones
 
 - La comisión fija en USDT se convierte con la tasa USD/USDT `EXCHANGE`, no 1:1. Sin tasa `EXCHANGE` reciente, los métodos USDT responden `fx_rate_unavailable`.
-- El spread del 1,2 % solo se aplica al convertir liquidaciones, nunca al cobrar ([liquidaciones.md](liquidaciones.md)).
+- Las liquidaciones USD→VES se convierten exactamente a la tasa oficial BCV vigente, sin spread. El spread configurado solo puede aplicar a otros pares de conversión.
 - Se rechazó guardar tasas en `NUMERIC(18,6)`: 6 decimales no alcanzan para USDT/VES invertido.
