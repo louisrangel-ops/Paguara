@@ -66,11 +66,14 @@ Quién puede: **S** token de sistema (workers, cron), **O** cualquier operador, 
 
 | Método | Ruta | Cuerpo | Quién | Qué hace |
 |---|---|---|---|---|
-| GET | `/internal/whoami` | — | S, O | `{kind: 'system'}` o `{kind: 'operator', id, name, role}` |
-| POST | `/internal/operators` | `{name, role: 'master'\|'operator'}` | M (S solo el primer maestro) | Crea a una persona y devuelve su token `opk_…` una sola vez |
-| GET | `/internal/operators` | — | M | Operadores con rol y si están revocados |
+| GET | `/internal/whoami` | — | S, O | `{kind:'system'}` o `{kind:'operator', id, name, role, permissions[]}` |
+| POST | `/internal/operators` | `{name, role}` | M (S solo el primer maestro) | Crea una persona; roles: master, compliance, operations, treasury, support, auditor, operator |
+| GET | `/internal/operators` | — | `operators:read` | Operadores, rol, estado e historial de cambios |
+| POST | `/internal/operators/:id/role` | `{role}` | `operators:manage` | Reasigna el rol; no permite eliminar el último master |
+| POST | `/internal/operators/:id/revoke` | — | `operators:manage` | Revoca el token del operador |
 | POST | `/internal/operators/:id/revoke` | — | M | Revoca el token (no a sí mismo) |
-| POST | `/internal/merchants` | `{business_name, rif, webhook_url?}` | M | Crea comercio (`pending_kyc`) |
+| GET | `/internal/merchants` | `?q=&status=&limit=` | `merchants:read` | Directorio de comercios por nombre, RIF o id |
+| POST | `/internal/merchants` | `{business_name, rif, webhook_url?}` | `merchants:manage` | Crea comercio (`pending_kyc`) |
 | GET | `/internal/merchants/:id` | — | S, O, M | KYC completo + perfil ISO 8583 para revisión |
 | POST | `/internal/merchants/:id/iso8583_profile` | `{status?, mcc, acquirer_merchant_id, terminal_id, acquiring_institution_id, currency_numeric?, pos_entry_mode?, pos_condition_code?}` | M | Provisiona identificadores técnicos del adquirente |
 | POST | `/internal/merchants/:id/status` | `{status}` | M | Aprueba o suspende tras KYC |
