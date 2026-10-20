@@ -45,7 +45,7 @@ Columnas que cubre el rewrap: `webhooks.endpoints.secret`, `merchants.merchants.
 ## Secretos de los bancos (`src/secrets/rail-credentials.service.ts`)
 
 Llaves de API del C2P, usuario y clave del web service, certificado TLS cliente, su llave privada o el `.p12` que entrega
-cada banco. Tabla `platform.rail_credentials` (migración 012):
+cada banco. Tabla `platform.rail_credentials` (migración 014):
 
 - `sealed` con `CHECK (sealed LIKE 'env:v1:%')`: la base rechaza un secreto en claro aunque la app tenga un bug, y sin
   KMS la API no lo guarda (503 `kms_unavailable`).
@@ -59,9 +59,9 @@ cada banco. Tabla `platform.rail_credentials` (migración 012):
 
 | Ruta | Cuerpo | Quién | Qué hace |
 |---|---|---|---|
-| `GET /internal/rail_credentials` | — | O | Vigentes, sin valor |
-| `POST /internal/rail_credentials` | `{rail, name, kind: 'api_key'\|'password'\|'certificate'\|'private_key'\|'pkcs12', value}` | M | Carga una versión nueva |
-| `POST /internal/rail_credentials/:rail/:name/retire` | — | M | Retira la vigente |
+| `GET /internal/rail_credentials` | — | `secrets:read` | Vigentes, sin valor |
+| `POST /internal/rail_credentials` | `{rail, name, kind: 'api_key'\|'password'\|'certificate'\|'private_key'\|'pkcs12', value}` | `secrets:manage` | Carga una versión nueva |
+| `POST /internal/rail_credentials/:rail/:name/retire` | — | `secrets:manage` | Retira la vigente |
 
 En `/admin` → *Secretos de los bancos* se cargan pegando el valor o eligiendo el archivo (el `.p12` se pasa a base64
 en el navegador).

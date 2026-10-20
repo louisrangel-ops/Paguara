@@ -1,7 +1,7 @@
 # Panel total de administración de Paguara y RBAC
 
 El panel interno `/admin` es la consola operativa de Paguara. Solo se sirve por `INTERNAL_PORT` y requiere
-un token personal `opk_…`. El token de procesos `INTERNAL_API_TOKEN` no sirve para iniciar sesión en el panel.
+un token personal `opk_…` más el código de la app autenticadora (doble factor). El token de procesos `INTERNAL_API_TOKEN` no sirve para iniciar sesión en el panel.
 
 ## Roles internos
 
@@ -28,6 +28,21 @@ Los permisos efectivos salen de `operatorPermissions(role)` en `src/settlements/
 - `payouts:read`, `payouts:approve`
 - `settlement:manage`, `treasury:contribute`
 - `workers:run`
+- `security:manage` (reiniciar el doble factor de otro operador o de un usuario de comercio), `secrets:read`, `secrets:manage` (secretos de los bancos)
+- `reconciliation:read`, `reconciliation:run` (extractos, corridas y cierre de diferencias), `alerts:read`, `alerts:ack`
+
+| Permiso | master | operator | compliance | operations | treasury | support | auditor |
+|---|---|---|---|---|---|---|---|
+| `security:manage`, `secrets:manage` | ✓ | | | | | | |
+| `secrets:read` | ✓ | ✓ | | | | | ✓ |
+| `reconciliation:read` | ✓ | ✓ | | ✓ | ✓ | | ✓ |
+| `reconciliation:run` | ✓ | ✓ | | | ✓ | | |
+| `alerts:read` | ✓ | ✓ | | ✓ | ✓ | | ✓ |
+| `alerts:ack` | ✓ | ✓ | | ✓ | ✓ | | |
+
+Para entrar, cada persona usa su token `opk_…` y el código de su app autenticadora; el panel trabaja con la sesión
+`ops_…` resultante ([doble-factor.md](doble-factor.md#panel-interno-obligatorio)). Un cambio de rol aplica en la
+siguiente petición: la sesión lee el rol vigente.
 
 `GET /internal/whoami` devuelve el rol y la lista de permisos; `public/admin.html` usa esa lista para mostrar
 solo las secciones y acciones autorizadas.

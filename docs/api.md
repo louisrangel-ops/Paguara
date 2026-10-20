@@ -72,24 +72,21 @@ Quién puede: **S** token de sistema (workers, cron), **O** cualquier operador, 
 
 | Método | Ruta | Cuerpo | Quién | Qué hace |
 |---|---|---|---|---|
-| GET | `/internal/whoami` | — | S, O | `{kind: 'system'}` o `{kind: 'operator', id, name, role}` |
-| POST | `/internal/auth/session`, `/internal/auth/mfa/setup`, `/internal/auth/mfa/confirm`, `/internal/auth/logout` | `{token, code}` | token `opk_` | Entrada con doble factor; devuelven la sesión `ops_` ([doble-factor.md](doble-factor.md#panel-interno-obligatorio)) |
-| POST | `/internal/operators/:id/mfa/reset` | `{reason}` | M (no a sí mismo) | Reinicia el doble factor de un operador y cierra sus sesiones |
-| GET | `/internal/dashboard_users?email=` | — | M | Usuario de un comercio con `mfa_enabled` |
-| POST | `/internal/dashboard_users/:id/mfa/reset` | `{reason}` | M | Reinicia su doble factor y cierra sus sesiones |
-| GET / POST | `/internal/rail_credentials` | `{rail, name, kind, value}` | O / M | Secretos de los bancos cifrados con el KMS ([gestor-de-secretos.md](gestor-de-secretos.md#secretos-de-los-bancos-srcsecretsrail-credentialsservicets)) |
-| POST | `/internal/rail_credentials/:rail/:name/retire` | — | M | Retira la versión vigente |
-| POST | `/internal/reconciliation/statements`, `/runs`, `/daily` | ver [conciliacion.md](conciliacion.md#rutas-internal-ver-apimdapi-interna) | S, O | Importa extractos y concilia |
-| GET | `/internal/reconciliation/runs`, `/runs/:id`, `/discrepancies` | — | O | Corridas y diferencias abiertas |
-| POST | `/internal/reconciliation/discrepancies/:id/resolve` | `{resolution}` | O | Cierra una diferencia con nota |
-| GET / POST | `/internal/alerts`, `/internal/alerts/:id/acknowledge` | — | O | Alertas abiertas; marcar vista |
-| POST | `/internal/operators` | `{name, role: 'master'\|'operator'}` | M (S solo el primer maestro) | Crea a una persona y devuelve su token `opk_…` una sola vez |
-| GET | `/internal/operators` | — | M | Operadores con rol y si están revocados |
 | GET | `/internal/whoami` | — | S, O | `{kind:'system'}` o `{kind:'operator', id, name, role, permissions[]}` |
 | POST | `/internal/operators` | `{name, role}` | M (S solo el primer maestro) | Crea una persona; roles: master, compliance, operations, treasury, support, auditor, operator |
 | GET | `/internal/operators` | — | `operators:read` | Operadores, rol, estado e historial de cambios |
 | POST | `/internal/operators/:id/role` | `{role}` | `operators:manage` | Reasigna el rol; no permite eliminar el último master |
 | POST | `/internal/operators/:id/revoke` | — | `operators:manage` | Revoca el token del operador |
+| POST | `/internal/auth/session`, `/internal/auth/mfa/setup`, `/internal/auth/mfa/confirm`, `/internal/auth/logout` | `{token, code}` | token `opk_` | Entrada con doble factor; devuelven la sesión `ops_` ([doble-factor.md](doble-factor.md#panel-interno-obligatorio)) |
+| POST | `/internal/operators/:id/mfa/reset` | `{reason}` | `security:manage` (no a sí mismo) | Reinicia el doble factor de un operador y cierra sus sesiones |
+| GET | `/internal/dashboard_users?email=` | — | `security:manage` | Usuario de un comercio con `mfa_enabled` |
+| POST | `/internal/dashboard_users/:id/mfa/reset` | `{reason}` | `security:manage` | Reinicia su doble factor y cierra sus sesiones |
+| GET / POST | `/internal/rail_credentials` | `{rail, name, kind, value}` | `secrets:read` / `secrets:manage` | Secretos de los bancos cifrados con el KMS ([gestor-de-secretos.md](gestor-de-secretos.md#secretos-de-los-bancos-srcsecretsrail-credentialsservicets)) |
+| POST | `/internal/rail_credentials/:rail/:name/retire` | — | `secrets:manage` | Retira la versión vigente |
+| POST | `/internal/reconciliation/statements`, `/runs`, `/daily` | ver [conciliacion.md](conciliacion.md#rutas-internal-ver-apimdapi-interna) | S, `reconciliation:run` | Importa extractos y concilia |
+| GET | `/internal/reconciliation/runs`, `/runs/:id`, `/discrepancies` | — | `reconciliation:read` | Corridas y diferencias abiertas |
+| POST | `/internal/reconciliation/discrepancies/:id/resolve` | `{resolution}` | `reconciliation:run` | Cierra una diferencia con nota |
+| GET / POST | `/internal/alerts`, `/internal/alerts/:id/acknowledge` | — | `alerts:read` / `alerts:ack` | Alertas abiertas; marcar vista |
 | POST | `/internal/operators/:id/revoke` | — | M | Revoca el token (no a sí mismo) |
 | GET | `/internal/merchants` | `?q=&status=&limit=` | `merchants:read` | Directorio de comercios por nombre, RIF o id |
 | POST | `/internal/merchants` | `{business_name, rif, webhook_url?}` | `merchants:manage` | Crea comercio (`pending_kyc`) |
@@ -152,12 +149,9 @@ Forma: `{ "error": { "type", "code", "message", ...extra } }` (`ApiExceptionFilt
 
 | HTTP | Códigos |
 |---|---|
-| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid`, `mfa_code_required`, `reason_required`, `rail_invalid`, `value_invalid`, `statement_invalid`, `statement_date_invalid`, `date_invalid`, `statement_too_large`, `resolution_required` |
+| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid`, `return_url_invalid`, `mfa_code_required`, `reason_required`, `rail_invalid`, `value_invalid`, `statement_invalid`, `statement_date_invalid`, `date_invalid`, `statement_too_large`, `resolution_required` |
 | 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials`, `mfa_code_invalid`, `mfa_challenge_expired`, `operator_session_required` |
 | 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role`, `mfa_required` |
-| 400 | `amount_invalid`, `amount_too_small`, `amount_out_of_range`, `payment_method_not_allowed`, `payment_method_types_invalid`, `no_payment_methods_available` (al crear), `enabled_invalid`, `platform_status_invalid`, `capability_invalid`, `currency_invalid`, `expires_invalid`, `payment_method_invalid`, `idempotency_key_required`, `reference_required`, `settlement_rules_invalid`, `status_invalid`, `kind_invalid`, `kyc_invalid`, `signup_invalid`, `business_name_invalid`, `description_invalid`, `events_invalid`, `url_invalid`, `invalid_request`, `settlement_currency_invalid`, `contract_required`, `contract_ref_invalid`, `name_invalid`, `role_invalid`, `return_url_invalid` |
-| 401 | `unauthenticated`, `wrong_environment`, `invalid_credentials` |
-| 403 | `account_restricted`, `account_not_activated`, `csrf_rejected`, `payment_method_disabled`, `feature_disabled`, `insufficient_role` |
 | 404 | `resource_missing`, `not_found` (rutas internas en el puerto público) |
 | 409 | `payment_intent_unexpected_state`, `payment_intent_expired`, `fx_quote_expired`, `rail_reference_already_used`, `insufficient_balance`, `request_in_progress`, `payment_not_captured`, `batch_mismatch`, `funds_already_received`, `payout_already_exists`, `key_revoked`, `capability_locked`, `capability_not_requestable`, `no_payment_methods_available` (en `/pay/:slug`), `payout_already_approved`, `already_approved_by_you`, `payout_not_approved`, `name_taken`, `cannot_revoke_self`, `mfa_already_enabled`, `mfa_enrollment_missing`, `mfa_not_enabled`, `cannot_reset_self` |
 | 422 | `idempotency_key_reused` |

@@ -7,7 +7,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | Documento | Contenido |
 |---|---|
 | [Arquitectura y módulos](arquitectura.md) | Procesos, módulos NestJS, flujo de un pedido, estructura del repo |
-| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–012 |
+| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–014 |
 | [Ledger y plan de cuentas](ledger.md) | Doble partida multi-moneda, cuentas, plantillas de asientos, garantías de la BD |
 | [Máquina de estados del PaymentIntent](payment-intents.md) | Estados, eventos, congelamiento de tasa, vencimiento, idempotencia |
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |

@@ -31,3 +31,17 @@ test('RBAC interno: cumplimiento, operaciones y tesoreria quedan separados', () 
   assert.ok(treasury.includes('settlement:manage'));
   assert.ok(!treasury.includes('iso8583:manage'));
 });
+
+test('RBAC interno: doble factor, secretos de los bancos, conciliación y alertas', () => {
+  const master = operatorPermissions('master');
+  for (const p of ['security:manage', 'secrets:manage', 'reconciliation:run', 'alerts:ack'] as const) assert.ok(master.includes(p));
+  assert.ok(!operatorPermissions('compliance').includes('reconciliation:read'));
+  assert.ok(operatorPermissions('treasury').includes('reconciliation:run'));
+  const auditor = operatorPermissions('auditor');
+  assert.ok(auditor.includes('reconciliation:read') && auditor.includes('alerts:read') && auditor.includes('secrets:read'));
+  assert.ok(!auditor.includes('reconciliation:run') && !auditor.includes('alerts:ack') && !auditor.includes('secrets:manage'));
+  for (const role of ['operator', 'compliance', 'operations', 'treasury', 'support', 'auditor'] as const) {
+    assert.ok(!operatorPermissions(role).includes('security:manage'), `${role} no reinicia doble factor`);
+    assert.ok(!operatorPermissions(role).includes('secrets:manage'), `${role} no carga secretos de bancos`);
+  }
+});

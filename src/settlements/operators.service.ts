@@ -12,7 +12,6 @@ export const operatorSessionHours = (env: NodeJS.ProcessEnv = process.env) => {
   const h = Number(env.OPERATOR_SESSION_HOURS ?? 8);
   return Number.isFinite(h) && h > 0 && h <= 24 ? h : 8;
 };
-
 const ROLES: OperatorRole[] = ['master','operator','compliance','operations','treasury','support','auditor'];
 export type OperatorPermission =
   | 'operators:read' | 'operators:manage'
@@ -21,22 +20,25 @@ export type OperatorPermission =
   | 'capabilities:read' | 'capabilities:manage' | 'platform:manage'
   | 'payouts:read' | 'payouts:approve'
   | 'settlement:manage' | 'treasury:contribute'
-  | 'workers:run';
+  | 'workers:run'
+  | 'security:manage'
+  | 'secrets:read' | 'secrets:manage'
+  | 'reconciliation:read' | 'reconciliation:run'
+  | 'alerts:read' | 'alerts:ack';
 
 const PERMISSIONS: Record<OperatorRole, readonly OperatorPermission[]> = {
-  master: ['operators:read','operators:manage','merchants:read','merchants:manage','merchants:status','merchants:api_keys','iso8583:manage','capabilities:read','capabilities:manage','platform:manage','payouts:read','payouts:approve','settlement:manage','treasury:contribute','workers:run'],
-  operator: ['merchants:read','capabilities:read','payouts:read','payouts:approve'],
+  master: ['operators:read','operators:manage','merchants:read','merchants:manage','merchants:status','merchants:api_keys','iso8583:manage','capabilities:read','capabilities:manage','platform:manage','payouts:read','payouts:approve','settlement:manage','treasury:contribute','workers:run','security:manage','secrets:read','secrets:manage','reconciliation:read','reconciliation:run','alerts:read','alerts:ack'],
+  operator: ['merchants:read','capabilities:read','payouts:read','payouts:approve','secrets:read','reconciliation:read','reconciliation:run','alerts:read','alerts:ack'],
   compliance: ['merchants:read','merchants:status','iso8583:manage','capabilities:read'],
-  operations: ['merchants:read','merchants:manage','capabilities:read','capabilities:manage','platform:manage'],
-  treasury: ['merchants:read','payouts:read','payouts:approve','settlement:manage','treasury:contribute'],
+  operations: ['merchants:read','merchants:manage','capabilities:read','capabilities:manage','platform:manage','reconciliation:read','alerts:read','alerts:ack'],
+  treasury: ['merchants:read','payouts:read','payouts:approve','settlement:manage','treasury:contribute','reconciliation:read','reconciliation:run','alerts:read','alerts:ack'],
   support: ['merchants:read','capabilities:read'],
-  auditor: ['operators:read','merchants:read','capabilities:read','payouts:read'],
+  auditor: ['operators:read','merchants:read','capabilities:read','payouts:read','secrets:read','reconciliation:read','alerts:read'],
 };
 
 export const operatorPermissions = (role: OperatorRole): OperatorPermission[] => [...PERMISSIONS[role]];
 export const hasOperatorPermission = (operator: Operator, permission: OperatorPermission) =>
   PERMISSIONS[operator.role]?.includes(permission) === true;
-
 
 const hash = (t: string) => createHash('sha256').update(t).digest('hex');
 
@@ -45,7 +47,7 @@ const hash = (t: string) => createHash('sha256').update(t).digest('hex');
  * (`opk_…`, en la base solo su SHA-256), así la auditoría dice quién fue y una
  * liquidación puede exigir aprobaciones de personas distintas.
  *
- * Desde la migración 012 el token solo no abre /internal: con él y el código de
+ * Desde la migración 014 el token solo no abre /internal: con él y el código de
  * su app autenticadora la persona recibe una sesión `ops_…` de pocas horas
  * (InternalAuthController). Revocar a la persona cierra sus sesiones.
  */
@@ -147,11 +149,7 @@ export class OperatorsService {
   async revoke(id: string, by: Operator) {
     if (!hasOperatorPermission(by, 'operators:manage')) throw new ApiError(403, 'insufficient_role', 'No tienes permiso para revocar operadores');
     if (id === by.id) throw new ApiError(409, 'cannot_revoke_self', 'No puedes revocarte a ti mismo');
-    const res = await this.pool.query('UPDATE platform.operators SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [id]);
-    if (res.rowCount === 0) throw new ApiError(404, 'resource_missing', `No existe el operador activo ${id}`);
-    await this.endAllSessions(id);
-    return { id, revoked: true };
-    return withTransaction(this.pool, async (client) => {
+    const res = await withTransaction(this.pool, async (client) => {
       const { rows } = await client.query<{ role: OperatorRole; revoked_at: Date | null }>(
         'SELECT role, revoked_at FROM platform.operators WHERE id = $1 FOR UPDATE', [id]);
       const current = rows[0];
@@ -164,17 +162,17 @@ export class OperatorsService {
       await client.query('UPDATE platform.operators SET revoked_at = now() WHERE id = $1', [id]);
       return { id, revoked: true };
     });
+    await this.endAllSessions(id);
+    return res;
   }
 
   async list() {
     const { rows } = await this.pool.query(
-      `SELECT o.id, o.name, o.role, o.created_at, o.revoked_at, (f.confirmed_at IS NOT NULL) AS mfa_enabled
-         FROM platform.operators o
-         LEFT JOIN security.mfa_factors f ON f.principal_type = 'operator' AND f.principal_id = o.id
-      `SELECT o.id, o.name, o.role, o.created_at, o.revoked_at,
+      `SELECT o.id, o.name, o.role, o.created_at, o.revoked_at, (f.confirmed_at IS NOT NULL) AS mfa_enabled,
               COALESCE((SELECT json_agg(json_build_object('old_role', rc.old_role, 'new_role', rc.new_role, 'created_at', rc.created_at) ORDER BY rc.created_at DESC)
                          FROM platform.operator_role_changes rc WHERE rc.operator_id = o.id), '[]'::json) AS role_history
          FROM platform.operators o
+         LEFT JOIN security.mfa_factors f ON f.principal_type = 'operator' AND f.principal_id = o.id
         ORDER BY o.revoked_at NULLS FIRST, o.name`);
     return rows;
   }

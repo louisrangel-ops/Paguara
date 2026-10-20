@@ -123,8 +123,7 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
 <main id="main">
   <div class="intro">
     <h1>Panel interno</h1>
-    <p class="muted">Alertas, liquidaciones por aprobar, conciliación bancaria, solicitudes de los comercios, interruptores de la plataforma, capacidades por comercio y secretos de los bancos. Cada acción queda en la auditoría con tu nombre.</p>
-    <p class="muted">Administración integral de Paguara: comercios y KYC, perfiles ISO 8583, métodos por contrato, liquidaciones, operación de plataforma y usuarios internos con permisos por rol. Cada acción sensible queda asociada al operador.</p>
+    <p class="muted">Administración integral de Paguara: comercios y KYC, perfiles ISO 8583, métodos por contrato, liquidaciones, conciliación bancaria y alertas, secretos de los bancos, operación de plataforma y usuarios internos con permisos por rol. Cada acción sensible queda asociada al operador.</p>
   </div>
 
   <form class="card auth" id="auth" autocomplete="off">
@@ -159,20 +158,20 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
 
   <div id="app" hidden>
     <div style="display:grid;gap:20px">
-      <section class="card" aria-labelledby="al-h">
+      <section class="card" data-perm="alerts:read" aria-labelledby="al-h">
         <h2 id="al-h">Alertas<span class="count" id="al-count" hidden></span></h2>
         <div id="alerts"></div>
       </section>
-      <section class="card" aria-labelledby="po-h">
       <section class="card" data-perm="payouts:read" aria-labelledby="po-h">
         <div class="head"><h2 id="po-h">Liquidaciones por aprobar<span class="count" id="po-count" hidden></span></h2><button class="btn ghost" type="button" id="reload">Actualizar</button></div>
         <p class="muted">Ninguna liquidación llega a tesorería sin la aprobación de personas distintas. Revisa monto, comercio y cuenta antes de aprobar.</p>
         <div id="payouts"></div>
       </section>
-      <section class="card" aria-labelledby="rec-h">
+      <section class="card" data-perm="reconciliation:read" aria-labelledby="rec-h">
         <h2 id="rec-h">Conciliación bancaria<span class="count" id="rec-count" hidden></span></h2>
         <p class="muted">Cada mañana se cruza el extracto de cada banco con los cobros del día anterior, por referencia y monto. Lo que cuadra se libera a los comercios; lo que no, queda aquí hasta que alguien explique qué pasó.</p>
         <div id="discrepancies"></div>
+        <div data-perm="reconciliation:run">
         <h3>Subir un extracto</h3>
         <form class="row" id="st-form">
           <div class="field"><label for="st-rail">Riel</label><select id="st-rail"></select></div>
@@ -182,10 +181,10 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
         </form>
         <p class="muted">Columnas: fecha, referencia, monto y descripción, separadas por coma o punto y coma. Fecha AAAA-MM-DD o DD/MM/AAAA; monto con coma o punto decimal; los débitos en negativo.</p>
         <div id="st-out" role="status"></div>
+        </div>
         <h3>Últimas corridas</h3>
         <div id="runs"></div>
       </section>
-      <section class="card" aria-labelledby="req-h">
       <section class="card" data-perm="capabilities:read" aria-labelledby="req-h">
         <h2 id="req-h">Solicitudes de métodos y módulos<span class="count" id="req-count" hidden></span></h2>
         <p class="muted master-only">Un método de pago se habilita solo con su contrato firmado: escribe el número antes de aprobar.</p>
@@ -213,11 +212,11 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
         </form>
         <div id="merchant"></div>
       </section>
-      <section class="card master-only" aria-labelledby="cred-h">
+      <section class="card" data-perm="secrets:read" aria-labelledby="cred-h">
         <h2 id="cred-h">Secretos de los bancos</h2>
         <p class="muted">Llaves de API, claves y certificados que entrega cada banco. Se guardan cifrados con el gestor de llaves (KMS) y no se vuelven a mostrar: para cambiar uno, carga una versión nueva.</p>
         <div id="creds"></div>
-        <form id="cred-form" style="display:grid;gap:12px">
+        <form id="cred-form" data-perm="secrets:manage" style="display:grid;gap:12px">
           <div class="row">
             <div class="field"><label for="cred-rail">Riel</label><input id="cred-rail" required pattern="[a-z0-9_]{2,40}" placeholder="ves_c2p" spellcheck="false" style="width:170px"></div>
             <div class="field"><label for="cred-name">Nombre</label><input id="cred-name" required pattern="[a-z0-9_]{2,40}" placeholder="client_cert" spellcheck="false" style="width:170px"></div>
@@ -229,7 +228,7 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
         </form>
         <div id="cred-out" role="status"></div>
       </section>
-      <section class="card master-only" aria-labelledby="sup-h">
+      <section class="card" data-perm="security:manage" aria-labelledby="sup-h">
         <h2 id="sup-h">Doble factor de un comercio</h2>
         <p class="muted">Si alguien de un comercio perdió el teléfono y sus códigos de respaldo, verifica su identidad (videollamada con su cédula, correo desde la cuenta registrada) antes de reiniciarlo. Se cierran sus sesiones y queda en la auditoría con tu nombre y el motivo.</p>
         <form class="row" id="sup-form">
@@ -238,7 +237,6 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
         </form>
         <div id="sup-out"></div>
       </section>
-      <section class="card master-only" aria-labelledby="op-h">
       <section class="card" data-perm="operators:read" aria-labelledby="op-h">
         <h2 id="op-h">Operadores</h2>
         <form class="row" id="op-form" data-perm="operators:manage">
@@ -304,7 +302,8 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
     catch (e) { if (e.status === 401) signedOut('Tu sesión venció. Vuelve a entrar con tu token y el código de tu app.'); throw e; }
   }
   const fail = (slot, e) => slot.replaceChildren(el('div', { class: 'banner bad', role: 'alert', text: e.message }));
-  const isMaster = () => me && me.role === 'master';
+  const ROLE_LABELS = { master:'Maestro / Superadmin', operator:'Operador legado', compliance:'Cumplimiento', operations:'Operaciones', treasury:'Tesorería', support:'Soporte', auditor:'Auditor' };
+  const can = (p) => !!(me && Array.isArray(me.permissions) && me.permissions.includes(p));
   function show(id) {
     for (const s of ['auth', 'enroll', 'codes', 'app']) $(s).hidden = s !== id;
     $('logout').hidden = id !== 'app';
@@ -315,8 +314,6 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
     show('auth');
     if (msg) fail($('auth-err'), new Error(msg));
   }
-  const ROLE_LABELS = { master:'Maestro / Superadmin', operator:'Operador legado', compliance:'Cumplimiento', operations:'Operaciones', treasury:'Tesorería', support:'Soporte', auditor:'Auditor' };
-  const can = (p) => !!(me && Array.isArray(me.permissions) && me.permissions.includes(p));
 
   $('auth').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -372,26 +369,19 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
       return;
     }
     show('app');
-    $('who').textContent = me.name + (isMaster() ? ' · maestro' : ' · operador');
-    document.querySelectorAll('.master-only').forEach((n) => { n.hidden = !isMaster(); });
-    refresh();
-  }
-  function refresh() {
-    loadAlerts(); loadPayouts(); loadReconciliation(); loadRequests();
-    if (isMaster()) { loadGlobals(); loadCreds(); loadOperators(); }
-    store.set('paguara.internal.token', token);
-    $('auth').hidden = true; $('app').hidden = false;
     $('who').textContent = me.name + ' · ' + (ROLE_LABELS[me.role] || me.role);
     document.querySelectorAll('[data-perm]').forEach((n) => { n.hidden = !can(n.dataset.perm); });
     refresh();
   }
   function refresh() {
+    if (can('alerts:read')) loadAlerts();
     if (can('payouts:read')) loadPayouts();
+    if (can('reconciliation:read')) loadReconciliation();
     if (can('capabilities:read')) loadRequests();
     if (can('platform:manage')) loadGlobals();
     if (can('merchants:read')) loadMerchantList();
+    if (can('secrets:read')) loadCreds();
     if (can('operators:read')) loadOperators();
-
   }
   $('reload').addEventListener('click', refresh);
 
@@ -860,23 +850,7 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
     try {
       const { data } = await api('GET', '/operators');
       slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, ['Nombre', 'Rol', 'Desde', 'Estado', 'Doble factor', ''].map((t) => el('th', { scope: 'col', text: t })))]),
-        el('tbody', {}, data.map((o) => el('tr', {}, [
-          el('th', { scope: 'row' }, [o.name, el('br'), el('code', { text: o.id })]),
-          el('td', { text: o.role === 'master' ? 'Maestro' : 'Operador' }),
-          el('td', { text: when(o.created_at) }),
-          el('td', {}, [o.revoked_at ? pill('Revocado', 'bad') : pill('Activo', 'ok')]),
-          el('td', {}, [o.mfa_enabled ? pill('Activo', 'ok') : pill('Sin activar', 'warn')]),
-          el('td', { class: 'actions' }, [o.revoked_at || o.id === me.id || !o.mfa_enabled ? null : el('button', { class: 'btn ghost', type: 'button', text: 'Reiniciar 2FA', 'aria-label': 'Reiniciar el doble factor de ' + o.name, onclick: async () => {
-            const reason = askReason(o.name);
-            if (!reason) return;
-            try { await api('POST', '/operators/' + encodeURIComponent(o.id) + '/mfa/reset', { reason }); say('Doble factor de ' + o.name + ' reiniciado'); loadOperators(); } catch (e) { alert(e.message); }
-          } }), o.revoked_at || o.id === me.id ? null : el('button', { class: 'btn danger', type: 'button', text: 'Revocar', 'aria-label': 'Revocar a ' + o.name, onclick: async () => {
-            if (!confirm('¿Revocar el acceso de ' + o.name + '? Su token deja de funcionar al instante.')) return;
-            try { await api('POST', '/operators/' + encodeURIComponent(o.id) + '/revoke'); say(o.name + ' revocado'); loadOperators(); } catch (e) { alert(e.message); }
-          } })]),
-        ]))),
-        el('thead', {}, [el('tr', {}, ['Nombre','Rol','Desde','Historial','Estado',''].map((t)=>el('th',{scope:'col',text:t})))]),
+        el('thead', {}, [el('tr', {}, ['Nombre','Rol','Desde','Historial','Estado','Doble factor',''].map((t)=>el('th',{scope:'col',text:t})))]),
         el('tbody', {}, data.map((o) => {
           const role = can('operators:manage') && !o.revoked_at && o.id !== me.id
             ? el('select', { 'aria-label':'Rol de '+o.name }, ROLE_OPTIONS.map(([v,t])=>el('option',{value:v,text:t,selected:o.role===v})))
@@ -893,10 +867,16 @@ textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid
             if(!confirm('¿Revocar el acceso de '+o.name+'? Su token deja de funcionar al instante.')) return;
             try{await api('POST','/operators/'+encodeURIComponent(o.id)+'/revoke');say(o.name+' revocado');loadOperators();}catch(e){alert(e.message);}
           }}):null;
+          const reset = can('security:manage') && !o.revoked_at && o.id !== me.id && o.mfa_enabled ? el('button', { class: 'btn ghost', type: 'button', text: 'Reiniciar 2FA', 'aria-label': 'Reiniciar el doble factor de ' + o.name, onclick: async () => {
+            const reason = askReason(o.name);
+            if (!reason) return;
+            try { await api('POST', '/operators/' + encodeURIComponent(o.id) + '/mfa/reset', { reason }); say('Doble factor de ' + o.name + ' reiniciado'); loadOperators(); } catch (e) { alert(e.message); }
+          } }) : null;
           return el('tr',{},[
             el('th',{scope:'row'},[o.name,el('br'),el('code',{text:o.id})]),
             el('td',{},[role]),el('td',{text:when(o.created_at)}),el('td',{style:'white-space:pre-line',text:hist||'—'}),
-            el('td',{},[o.revoked_at?pill('Revocado','bad'):pill('Activo','ok')]),el('td',{class:'actions'},[revoke])
+            el('td',{},[o.revoked_at?pill('Revocado','bad'):pill('Activo','ok')]),
+            el('td',{},[o.mfa_enabled?pill('Activo','ok'):pill('Sin activar','warn')]),el('td',{class:'actions'},[reset,revoke])
           ]);
         })),
       ])]));

@@ -2,7 +2,7 @@
 
 Cada mañana se compara lo que dice el banco (extracto) con lo que dice el ledger (cobros capturados), por riel y moneda.
 Detecta un pago marcado como cobrado que nunca llegó, créditos que no son de ningún cobro y montos distintos, y avisa.
-Código en `src/reconciliation/` y `src/alerts/`; tablas en el esquema `reconciliation` (migración 012).
+Código en `src/reconciliation/` y `src/alerts/`; tablas en el esquema `reconciliation` (migración 014).
 
 ## Flujo
 
@@ -79,17 +79,17 @@ fecha;referencia;monto;descripcion
 
 ## Rutas (`/internal`, ver [api.md](api.md#api-interna))
 
-| Método | Ruta | Quién | Qué hace |
+| Método | Ruta | Quién (S = token de sistema; permisos en [admin-panel-rbac.md](admin-panel-rbac.md)) | Qué hace |
 |---|---|---|---|
-| POST | `/internal/reconciliation/statements` | S, O | Importa un extracto (`{rail, currency, statement_date, csv}` o `movements`) |
-| POST | `/internal/reconciliation/runs` | S, O | Concilia `{rail, currency, date}` y devuelve la corrida con sus diferencias |
-| POST | `/internal/reconciliation/daily` | S, O | Job diario de todos los rieles |
-| GET | `/internal/reconciliation/runs?limit=` | O | Últimas corridas |
-| GET | `/internal/reconciliation/runs/:id` | O | Una corrida con sus diferencias |
-| GET | `/internal/reconciliation/discrepancies` | O | Diferencias abiertas |
-| POST | `/internal/reconciliation/discrepancies/:id/resolve` | O | Cierra una con `{resolution}` |
-| GET | `/internal/alerts` | O | Alertas abiertas, críticas primero |
-| POST | `/internal/alerts/:id/acknowledge` | O | Marca vista |
+| POST | `/internal/reconciliation/statements` | S, `reconciliation:run` | Importa un extracto (`{rail, currency, statement_date, csv}` o `movements`) |
+| POST | `/internal/reconciliation/runs` | S, `reconciliation:run` | Concilia `{rail, currency, date}` y devuelve la corrida con sus diferencias |
+| POST | `/internal/reconciliation/daily` | S, `reconciliation:run` | Job diario de todos los rieles |
+| GET | `/internal/reconciliation/runs?limit=` | `reconciliation:read` | Últimas corridas |
+| GET | `/internal/reconciliation/runs/:id` | `reconciliation:read` | Una corrida con sus diferencias |
+| GET | `/internal/reconciliation/discrepancies` | `reconciliation:read` | Diferencias abiertas |
+| POST | `/internal/reconciliation/discrepancies/:id/resolve` | `reconciliation:run` | Cierra una con `{resolution}` |
+| GET | `/internal/alerts` | `alerts:read` | Alertas abiertas, críticas primero |
+| POST | `/internal/alerts/:id/acknowledge` | `alerts:ack` | Marca vista |
 
 ## Pendiente
 

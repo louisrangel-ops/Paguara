@@ -18,10 +18,9 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
 | `dashboard` | Usuarios del panel, sesiones y aceptación de documentos legales | 007, 011 |
 | `webhooks` | Endpoints, eventos (outbox) y entregas | 007 |
-| `platform` | Catálogo de métodos y módulos, operadores y sus sesiones, secretos de los bancos, alertas | 008, 009, 010, 012 |
-| `security` | Doble factor: semillas, códigos de respaldo y auditoría | 012 |
-| `reconciliation` | Extractos del banco, movimientos, corridas, cruces y diferencias | 012 |
-| `platform` | Catálogo de métodos/módulos, operadores internos y auditoría RBAC | 008, 009, 010, 013 |
+| `platform` | Catálogo de métodos y módulos, operadores internos, auditoría RBAC, sesiones de operador, secretos de los bancos, alertas | 008, 009, 010, 013, 014 |
+| `security` | Doble factor: semillas, códigos de respaldo y auditoría | 014 |
+| `reconciliation` | Extractos del banco, movimientos, corridas, cruces y diferencias | 014 |
 
 ## Migraciones
 
@@ -105,16 +104,6 @@ Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md) y [liqui
 
 Detalle en [legal.md](legal.md).
 
-### 012 · `012_mfa_kms_reconciliation.sql` — Doble factor, secretos de los bancos y conciliación diaria
-- `security.mfa_factors (principal_type 'user'|'operator', principal_id, secret_sealed, confirmed_at, last_used_step)`: semilla TOTP cifrada con el KMS; `confirmed_at` nulo = inscripción a medias.
-- `security.mfa_recovery_codes`: SHA-256 de los códigos de respaldo y `used_at`. `security.mfa_audit`: append-only (`ledger.tg_immutable`).
-- `platform.operator_sessions (token_hash, operator_id, expires_at, revoked_at, ip)`: sesión `ops_` del panel interno.
-- `platform.rail_credentials`: secretos de los bancos versionados; `CHECK (sealed LIKE 'env:v1:%')` impide guardarlos en claro; índice único de la versión vigente por riel y nombre; `expires_at` de los certificados.
-- `reconciliation.statements`, `reconciliation.movements` (único por riel, moneda, fecha valor, referencia y monto; `superseded_by` cuando un extracto corregido ya no lo trae), `reconciliation.runs`, `reconciliation.matches` (un cobro y un movimiento se cruzan una vez; append-only) y `reconciliation.discrepancies` (índice único de la diferencia abierta).
-- `platform.alerts`: alertas con `dedupe_key` única mientras están abiertas.
-
-Detalle en [doble-factor.md](doble-factor.md), [gestor-de-secretos.md](gestor-de-secretos.md) y [conciliacion.md](conciliacion.md).
-
 ## Prefijos de identificadores
 
 | Prefijo | Objeto | Generado en |
@@ -148,5 +137,19 @@ Detalle en [doble-factor.md](doble-factor.md), [gestor-de-secretos.md](gestor-de
 | `P0020` | Liberar o aprobar una liquidación sin las aprobaciones pedidas | 409 `payout_not_approved` |
 | `23505` en `payment_intents_rail_ref_idx` | Referencia bancaria reutilizada | 409 `rail_reference_already_used` |
 
+### 012 · `012_iso8583_merchant_profiles.sql` y 013 · `013_admin_rbac.sql`
+Perfiles ISO 8583 por comercio ([merchant-onboarding-iso8583.md](merchant-onboarding-iso8583.md)) y roles del panel
+interno con `platform.operator_role_changes` ([admin-panel-rbac.md](admin-panel-rbac.md)).
+
 ### 012 · `012_return_url.sql` — URL de retorno del checkout
 - `payments.payment_intents.return_url` (`text`, `NULL` = sin regreso), máximo 2048 caracteres. La forma (https, sin usuario ni clave) la valida la API. La usan las [integraciones con tiendas](integraciones/README.md).
+
+### 014 · `014_mfa_kms_reconciliation.sql` — Doble factor, secretos de los bancos y conciliación diaria
+- `security.mfa_factors (principal_type 'user'|'operator', principal_id, secret_sealed, confirmed_at, last_used_step)`: semilla TOTP cifrada con el KMS; `confirmed_at` nulo = inscripción a medias.
+- `security.mfa_recovery_codes`: SHA-256 de los códigos de respaldo y `used_at`. `security.mfa_audit`: append-only (`ledger.tg_immutable`).
+- `platform.operator_sessions (token_hash, operator_id, expires_at, revoked_at, ip)`: sesión `ops_` del panel interno.
+- `platform.rail_credentials`: secretos de los bancos versionados; `CHECK (sealed LIKE 'env:v1:%')` impide guardarlos en claro; índice único de la versión vigente por riel y nombre; `expires_at` de los certificados.
+- `reconciliation.statements`, `reconciliation.movements` (único por riel, moneda, fecha valor, referencia y monto; `superseded_by` cuando un extracto corregido ya no lo trae), `reconciliation.runs`, `reconciliation.matches` (un cobro y un movimiento se cruzan una vez; append-only) y `reconciliation.discrepancies` (índice único de la diferencia abierta).
+- `platform.alerts`: alertas con `dedupe_key` única mientras están abiertas.
+
+Detalle en [doble-factor.md](doble-factor.md), [gestor-de-secretos.md](gestor-de-secretos.md) y [conciliacion.md](conciliacion.md).

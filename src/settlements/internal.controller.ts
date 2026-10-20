@@ -143,7 +143,7 @@ export class InternalController {
   @Post('operators/:id/mfa/reset')
   @HttpCode(200)
   async resetOperatorMfa(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { reason?: string }) {
-    const by = master(req);
+    const by = permitted(req, 'security:manage');
     if (id === by.id) throw new ApiError(409, 'cannot_reset_self', 'Otro maestro debe reiniciar tu doble factor');
     const reason = requireReason(b.reason);
     const op = await this.operators.get(id);
@@ -155,7 +155,7 @@ export class InternalController {
   /** Buscar a un usuario de un comercio por correo (para soporte: reinicio de doble factor). */
   @Get('dashboard_users')
   async findUser(@Req() req: InternalRequest, @Query('email') email: string) {
-    master(req);
+    permitted(req, 'security:manage');
     const { rows } = await this.pool.query(
       `SELECT u.id, u.email, u.name, u.role, u.merchant_id, m.business_name, (f.confirmed_at IS NOT NULL) AS mfa_enabled
          FROM dashboard.users u JOIN merchants.merchants m ON m.id = u.merchant_id
@@ -168,7 +168,7 @@ export class InternalController {
   @Post('dashboard_users/:id/mfa/reset')
   @HttpCode(200)
   async resetUserMfa(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { reason?: string }) {
-    const by = master(req);
+    const by = permitted(req, 'security:manage');
     const reason = requireReason(b.reason);
     await this.mfa.remove({ type: 'user', id, label: '' }, `platform:${by.name}`, 'reset', reason);
     await this.auth.revokeAllSessions(id);
@@ -178,21 +178,21 @@ export class InternalController {
   // ---- Secretos de los bancos (KMS) ----
   @Get('rail_credentials')
   async listCredentials(@Req() req: InternalRequest) {
-    person(req);
+    permitted(req, 'secrets:read');
     return { object: 'list', data: await this.credentials.list() };
   }
 
   /** Carga o reemplaza (versión nueva) una llave, clave o certificado de un banco. El valor no se vuelve a mostrar. */
   @Post('rail_credentials')
   putCredential(@Req() req: InternalRequest, @Body() b: { rail?: string; name?: string; kind?: string; value?: string }) {
-    master(req);
+    permitted(req, 'secrets:manage');
     return this.credentials.put(b, actorName(req));
   }
 
   @Post('rail_credentials/:rail/:name/retire')
   @HttpCode(200)
   retireCredential(@Req() req: InternalRequest, @Param('rail') rail: string, @Param('name') name: string) {
-    master(req);
+    permitted(req, 'secrets:manage');
     return this.credentials.retire(rail, name, actorName(req));
   }
 
@@ -204,6 +204,7 @@ export class InternalController {
   @Post('reconciliation/statements')
   importStatement(@Req() req: InternalRequest, @Body() b: { rail?: string; currency?: string; statement_date?: string; csv?: string;
     movements?: Array<{ value_date?: string; amount?: string; reference?: string; description?: string }> }) {
+    workerOr(req, 'reconciliation:run');
     const cur = currency(String(b.currency ?? ''));
     let movements: BankMovement[];
     try {
@@ -220,6 +221,7 @@ export class InternalController {
 
   @Post('reconciliation/runs')
   runReconciliation(@Req() req: InternalRequest, @Body() b: { rail?: string; currency?: string; date?: string }) {
+    workerOr(req, 'reconciliation:run');
     return this.reconciliation.run({ rail: b.rail, currency: b.currency, date: b.date }, actorName(req));
   }
 
@@ -227,44 +229,45 @@ export class InternalController {
   @Post('reconciliation/daily')
   @HttpCode(200)
   daily(@Req() req: InternalRequest, @Body() b: { date?: string }) {
+    workerOr(req, 'reconciliation:run');
     return this.reconciliation.runDaily(b.date ?? yesterdayInCaracas(), actorName(req));
   }
 
   @Get('reconciliation/runs')
   async runs(@Req() req: InternalRequest, @Query('limit') limit?: string) {
-    person(req);
+    permitted(req, 'reconciliation:read');
     return { object: 'list', data: await this.reconciliation.listRuns(Number(limit ?? 50) || 50) };
   }
 
   @Get('reconciliation/runs/:id')
   run(@Req() req: InternalRequest, @Param('id') id: string) {
-    person(req);
+    permitted(req, 'reconciliation:read');
     return this.reconciliation.getRun(id);
   }
 
   @Get('reconciliation/discrepancies')
   async discrepancies(@Req() req: InternalRequest) {
-    person(req);
+    permitted(req, 'reconciliation:read');
     return { object: 'list', data: await this.reconciliation.openDiscrepancies() };
   }
 
   @Post('reconciliation/discrepancies/:id/resolve')
   @HttpCode(200)
   resolveDiscrepancy(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { resolution?: string }) {
-    person(req);
+    permitted(req, 'reconciliation:run');
     return this.reconciliation.resolve(id, actorName(req), b.resolution);
   }
 
   @Get('alerts')
   async listAlerts(@Req() req: InternalRequest) {
-    person(req);
+    permitted(req, 'alerts:read');
     return { object: 'list', data: await this.alerts.open() };
   }
 
   @Post('alerts/:id/acknowledge')
   @HttpCode(200)
   ackAlert(@Req() req: InternalRequest, @Param('id') id: string) {
-    person(req);
+    permitted(req, 'alerts:ack');
     return this.alerts.acknowledge(id, actorName(req));
   }
 
