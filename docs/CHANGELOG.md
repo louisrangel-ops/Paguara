@@ -11,7 +11,7 @@ Cada migración nueva se anota con su número.
 
 - [Rieles] `Iso8583SimulatorRail`: `RailAdapter` solo de pruebas para `card_national` que pasa por el codec y el simulador ISO 8583; el simulador agrega `timeoutAfterApprovalStan` (#14).
 - [CI] Prueba de integración `iso8583-e2e.test.ts`: aprobación, rechazo del emisor y timeout después de aprobar resuelto por conciliación (#14).
-- [Docs] Documentación de #14 en métodos de pago y pruebas; liquidaciones aclara que USD↔VES no lleva spread (#19); modelo de datos explica las dos migraciones 012; índice con migraciones 001–015; números de PR en las entradas de #16 a #19 y sin la copia repetida de #12 (#20).
+- [Docs] Documentación de #14 en métodos de pago y pruebas; liquidaciones, ledger y README aclaran que USD↔VES no lleva spread (#19); modelo de datos explica las dos migraciones 012; índice con migraciones 001–015; números de PR en las entradas de #16 a #19 y sin la copia repetida de #12 (#20).
 
 - [Esquema] Migración 015: `fx.rates.effective_date` y unicidad diaria para tasas BCV (#19).
 - [FX] Toda conversión USD/VES usa obligatoriamente la tasa oficial BCV vigente por fecha de Venezuela (#19).

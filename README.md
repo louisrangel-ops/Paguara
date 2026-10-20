@@ -77,7 +77,7 @@ cancel: desde requires_payment_method, requires_confirmation o requires_action
 | riel | Se llama fuera de la transacción. Timeout = el intent queda en `processing` para el reconciliador (marcarlo fallido podría duplicar un cobro). | `rails/*.ts` |
 | `succeeded` | En la **misma transacción**: asiento de captura + cambio de estado. Webhooks duplicados no duplican el asiento. | `applyRailResult` |
 | fondos recibidos | Conciliación del lote del banco: el neto pasa de "por recibir" a "disponible". | `SettlementsService.recordRailFunds` |
-| `settled` | Corte de lote: por comercio, liquida todo en bolívares (por ley); si cobró en USD o USDT congela una cotización a VES y cobra el spread. La instrucción de pago queda retenida hasta que la aprueben dos personas del panel interno. | `SettlementsService.runCutoff` |
+| `settled` | Corte de lote: por comercio, liquida todo en bolívares (por ley); si cobró en USD lo convierte a la tasa BCV exacta, sin spread, y si cobró en USDT congela una cotización a VES y cobra el spread. La instrucción de pago queda retenida hasta que la aprueben dos personas del panel interno. | `SettlementsService.runCutoff` |
 
 ## Modelo contable
 
