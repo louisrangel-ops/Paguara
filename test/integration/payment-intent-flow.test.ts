@@ -113,7 +113,7 @@ test('Pago Móvil P2P: requires_action con instrucciones; el matcher confirma de
   pi = await ctx.payments.confirm('m_2', pi.id, {});
   assert.equal(pi.status, 'requires_action');
   assert.equal(pi.next_action?.type, 'pago_movil_transfer');
-  assert.equal(pi.next_action?.amount, '100000'); // 25 USD × 40 (BCV vigente tras la prueba anterior) = 1.000,00 Bs
+  assert.equal(pi.next_action?.amount, '91250'); // 25 USD × 36,5 (BCV vigente del día) = 912,50 Bs
 
   // La tasa sigue congelada mientras se espera la transferencia
   assert.equal((await pgError(ctx.pool.query('UPDATE payments.payment_intents SET charge_amount = 1 WHERE id = $1', [pi.id]))).code, 'P0012');
