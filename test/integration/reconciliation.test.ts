@@ -89,9 +89,11 @@ test('conciliación: cruza por referencia y monto, libera solo lo que llegó y a
   assert.equal(sent.length, 1);
   assert.equal((await alerts.open()).find((x) => x.id === a.id)!.occurrences, 2);
 
-  // Llega el extracto corregido con el cobro perdido: cuadra y su diferencia se cierra sola
-  await recon.importStatement({ rail: 'ves_c2p', currency: 'VES', statementDate: day, source: 'file',
-    movements: [{ valueDate: day, amount: lost.amount, reference: lost.ref }] }, 'platform:Ana');
+  // Llega el extracto corregido (el día completo) con el cobro perdido: cuadra y su diferencia se cierra sola
+  const corrected = await recon.importStatement({ rail: 'ves_c2p', currency: 'VES', statementDate: day, source: 'file',
+    movements: [...parseStatementCsv(csv, 'VES'), { valueDate: day, amount: lost.amount, reference: lost.ref }] }, 'platform:Ana');
+  assert.equal(corrected.new_movements, 1);
+  assert.equal(corrected.superseded, 0);
   const third = await recon.run({ rail: 'ves_c2p', currency: 'VES', date: day }, 'platform:system');
   assert.equal(third.matched_count, 1);
   assert.equal(await fundsReceived(lost.id), true);
@@ -128,4 +130,68 @@ test('job diario con el banco simulado del sandbox: trae el extracto, concilia t
   assert.equal(out.results.find((r) => r.rail === 'zelle')!.status, 'clean');
   const runs = await recon.listRuns(100);
   assert.ok(runs.some((r) => r.rail === 'ves_c2p' && r.run_date === pi.day));
+});
+
+test('extracto corregido: reemplaza al anterior del mismo día y avisa si quita algo ya conciliado', async () => {
+  const m = await ctx.merchant('acct_recon_fix');
+  const pi = await charge(m, 2500n);
+  const other = await charge(m, 1000n);
+  const day = '2026-02-10';
+  await ctx.pool.query(`UPDATE payments.payment_intents SET succeeded_at = $2::date + interval '15 hours' WHERE id = ANY($1)`, [[pi.id, other.id], day]);
+  const imp = (movements: Array<{ valueDate: string; amount: bigint; reference: string }>) =>
+    recon.importStatement({ rail: 'ves_c2p', currency: 'VES', statementDate: day, source: 'file', movements }, 'platform:Ana');
+
+  // Primero el banco reporta 1 Bs menos y el otro cobro exacto
+  await imp([{ valueDate: day, amount: pi.amount - 100n, reference: pi.ref }, { valueDate: day, amount: other.amount, reference: other.ref }]);
+  const first = await recon.run({ rail: 'ves_c2p', currency: 'VES', date: day }, 'platform:system');
+  assert.deepEqual(first.discrepancies.map((d: { kind: string }) => d.kind), ['amount_mismatch']);
+  assert.equal(await fundsReceived(other.id), true);
+
+  // El extracto corregido trae el monto bueno y ya no trae el otro (que ya se cruzó y liberó)
+  sent.length = 0;
+  const fixed = await imp([{ valueDate: day, amount: pi.amount, reference: pi.ref }]);
+  assert.equal(fixed.superseded, 1, 'el movimiento de 1 Bs menos queda reemplazado');
+  assert.equal(fixed.matched_but_removed, 1);
+  const conflict = (await alerts.open()).find((a) => a.kind === 'statement_correction_conflict')!;
+  assert.equal(conflict.severity, 'critical');
+  assert.match(conflict.detail.movements[0], new RegExp(other.id));
+  assert.equal(sent.length, 1);
+
+  const second = await recon.run({ rail: 'ves_c2p', currency: 'VES', date: day }, 'platform:system');
+  assert.equal(second.matched_count, 1);
+  assert.equal(second.status, 'clean', 'el movimiento reemplazado no queda como crédito sin cobro');
+  assert.equal(await fundsReceived(pi.id), true);
+  assert.ok(!(await recon.openDiscrepancies()).some((d) => d.payment_intent_id === pi.id || d.payment_intent_id === other.id));
+});
+
+test('alertas: una que sube de atención a crítica cambia de gravedad y se vuelve a enviar', async () => {
+  sent.length = 0;
+  const key = 'recon:prueba:VES:2026-03-01';
+  await alerts.raise({ severity: 'warning', kind: 'reconciliation_discrepancies', dedupeKey: key, title: 'falta el extracto' });
+  await alerts.raise({ severity: 'warning', kind: 'reconciliation_discrepancies', dedupeKey: key, title: 'falta el extracto' });
+  assert.equal(sent.length, 1);
+  await alerts.raise({ severity: 'critical', kind: 'reconciliation_discrepancies', dedupeKey: key, title: '1 cobro sin dinero en el banco' });
+  assert.equal(sent.length, 2, 'la escalada se avisa');
+  await alerts.raise({ severity: 'warning', kind: 'reconciliation_discrepancies', dedupeKey: key, title: 'falta el extracto' });
+  assert.equal(sent.length, 2, 'bajar de gravedad no reenvía');
+  const a = (await alerts.open()).find((x) => x.title === 'falta el extracto' || x.title === '1 cobro sin dinero en el banco')!;
+  assert.equal(a.severity, 'critical', 'una alerta abierta nunca baja de gravedad');
+  assert.equal(a.occurrences, 4);
+});
+
+test('dos corridas a la vez del mismo riel no fallan ni liberan dos veces', async () => {
+  const m = await ctx.merchant('acct_recon_race');
+  const pis = [await charge(m, 1100n), await charge(m, 1200n), await charge(m, 1300n)];
+  const day = '2026-04-07';
+  await ctx.pool.query(`UPDATE payments.payment_intents SET succeeded_at = $2::date + interval '15 hours' WHERE id = ANY($1)`, [pis.map((p) => p.id), day]);
+  await recon.importStatement({ rail: 'ves_c2p', currency: 'VES', statementDate: day, source: 'file',
+    movements: pis.map((p) => ({ valueDate: day, amount: p.amount, reference: p.ref })) }, 'platform:Ana');
+  const runs = await Promise.all([1, 2, 3].map(() => recon.run({ rail: 'ves_c2p', currency: 'VES', date: day }, 'platform:system')));
+  assert.ok(runs.every((r) => r.status !== 'failed'), JSON.stringify(runs.map((r) => r.error)));
+  assert.equal(runs.reduce((n, r) => n + r.matched_count, 0), 3);
+  assert.equal(runs.filter((r) => r.released_entry_id).length >= 1, true);
+  for (const p of pis) assert.equal(await fundsReceived(p.id), true);
+  // Lo que ve la corrida que esperó el lock: los cobros ya liberados se saltan en vez de fallar
+  assert.equal(await ctx.settlements.recordRailFunds('rec_tarde', 'ves_c2p', 'VES', pis.map((p) => p.id), { skipAlreadyReceived: true }), null);
+  await assert.rejects(ctx.settlements.recordRailFunds('lote_manual', 'ves_c2p', 'VES', [pis[0].id]), code('funds_already_received'));
 });

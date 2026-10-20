@@ -94,10 +94,12 @@ CREATE TABLE reconciliation.statements (
   UNIQUE (rail, currency, statement_date, content_sha256)
 );
 
--- Movimientos del banco. Un movimiento repetido en otro extracto (archivo corregido) no se duplica
+-- Movimientos del banco. Un movimiento repetido en otro extracto (archivo corregido) no se duplica;
+-- uno que el extracto corregido ya no trae queda reemplazado (superseded_by) y no se concilia.
 CREATE TABLE reconciliation.movements (
   id           bigserial PRIMARY KEY,
   statement_id text NOT NULL REFERENCES reconciliation.statements(id),
+  superseded_by text REFERENCES reconciliation.statements(id),
   rail         text NOT NULL,
   currency     text NOT NULL REFERENCES ledger.currencies(code),
   value_date   date NOT NULL,

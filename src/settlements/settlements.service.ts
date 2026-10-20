@@ -54,9 +54,14 @@ export class SettlementsService {
    * Conciliación: el banco/riel acreditó un lote (archivo de cierre, API de
    * movimientos). Mueve el neto de cada comercio de "por recibir" a "disponible".
    */
-  recordRailFunds(batchId: string, rail: string, currency: Currency, paymentIntentIds: string[]) {
+  recordRailFunds(batchId: string, rail: string, currency: Currency, paymentIntentIds: string[], opts: { skipAlreadyReceived?: boolean } = {}) {
     return withTransaction(this.pool, async (c) => {
-      const pis = await this.repo.lockMany(c, [...new Set(paymentIntentIds)]);
+      let pis = await this.repo.lockMany(c, [...new Set(paymentIntentIds)]);
+      // La conciliación diaria pide saltar los que otra corrida liberó mientras esperaba el lock
+      if (opts.skipAlreadyReceived) {
+        pis = pis.filter((pi) => pi.funds_received_entry_id === null);
+        if (!pis.length) return null;
+      }
       for (const pi of pis) {
         if (pi.capture_entry_id === null) throw new ApiError(409, 'payment_not_captured', `${pi.id} no está cobrado`);
         if (pi.rail !== rail || pi.charge_currency !== currency) {

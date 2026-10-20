@@ -82,12 +82,13 @@ export class ReconciliationService {
     let date: string;
     try { date = parseDate(String(input.statementDate ?? '')); } catch (e) { throw new ApiError(400, 'statement_date_invalid', (e as Error).message); }
     if (input.movements.length > 50_000) throw new ApiError(400, 'statement_too_large', 'Máximo 50.000 movimientos por extracto');
-    return withTransaction(this.pool, async (c) => {
+    const result = await withTransaction(this.pool, async (c) => {
+      await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`recon:${rail}:${currency}`]);
       const hash = contentHash(input.movements);
       const { rows: [existing] } = await c.query<{ id: string }>(
         'SELECT id FROM reconciliation.statements WHERE rail = $1 AND currency = $2 AND statement_date = $3 AND content_sha256 = $4',
         [rail, currency, date, hash]);
-      if (existing) return { id: existing.id, movements: input.movements.length, new_movements: 0, duplicate: true };
+      if (existing) return { id: existing.id, movements: input.movements.length, new_movements: 0, superseded: 0, duplicate: true, conflicts: [] as string[] };
       const id = `bst_${randomBytes(10).toString('hex')}`;
       await c.query(
         `INSERT INTO reconciliation.statements (id, rail, currency, statement_date, source, content_sha256, movement_count, imported_by)
@@ -96,12 +97,42 @@ export class ReconciliationService {
       for (const m of input.movements) {
         const res = await c.query(
           `INSERT INTO reconciliation.movements (statement_id, rail, currency, value_date, amount, reference, description)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (rail, currency, value_date, reference, amount) DO NOTHING`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (rail, currency, value_date, reference, amount)
+           DO UPDATE SET superseded_by = NULL WHERE reconciliation.movements.superseded_by IS NOT NULL`,
           [id, rail, currency, m.valueDate, m.amount.toString(), m.reference, m.description ?? null]);
         fresh += res.rowCount ?? 0;
       }
-      return { id, movements: input.movements.length, new_movements: fresh, duplicate: false };
+      // Un extracto corregido del mismo día reemplaza al anterior: lo que ya no trae deja de contar.
+      // Lo ya cruzado no se toca (el cruce y los fondos liberados no se deshacen): se avisa para revisarlo.
+      const keep = `NOT EXISTS (SELECT 1 FROM jsonb_to_recordset($5::jsonb) AS n(value_date date, amount bigint, reference text)
+                     WHERE n.value_date = mv.value_date AND n.amount = mv.amount AND n.reference = mv.reference)`;
+      const listed = JSON.stringify(input.movements.map((m) => ({ value_date: m.valueDate, amount: m.amount.toString(), reference: m.reference })));
+      const prior = `mv.rail = $1 AND mv.currency = $2 AND mv.superseded_by IS NULL AND mv.statement_id IN (
+                       SELECT s.id FROM reconciliation.statements s WHERE s.rail = $1 AND s.currency = $2 AND s.statement_date = $3 AND s.id <> $4)`;
+      const { rows: superseded } = await c.query<{ id: string }>(
+        `UPDATE reconciliation.movements mv SET superseded_by = $4
+          WHERE ${prior} AND ${keep} AND NOT EXISTS (SELECT 1 FROM reconciliation.matches m WHERE m.movement_id = mv.id)
+          RETURNING mv.id::text`, [rail, currency, date, id, listed]);
+      if (superseded.length) {
+        await c.query(
+          `UPDATE reconciliation.discrepancies SET resolved_at = now(), resolved_by = 'system:reconciliation', resolution = $2
+            WHERE resolved_at IS NULL AND movement_id = ANY($1::bigint[])`,
+          [superseded.map((r) => r.id), `El banco lo quitó en el extracto corregido ${id}`]);
+      }
+      const { rows: conflicts } = await c.query<{ detail: string }>(
+        `SELECT format('%s %s (referencia %s, cruzado con %s)', to_char(mv.value_date, 'YYYY-MM-DD'), mv.amount, mv.reference, m.payment_intent_id) AS detail
+           FROM reconciliation.movements mv JOIN reconciliation.matches m ON m.movement_id = mv.id
+          WHERE ${prior} AND ${keep}`, [rail, currency, date, id, listed]);
+      return { id, movements: input.movements.length, new_movements: fresh, superseded: superseded.length, duplicate: false,
+        conflicts: conflicts.map((r) => r.detail) };
     });
+    if (result.conflicts.length) {
+      await this.alerts.raise({ severity: 'critical', kind: 'statement_correction_conflict', dedupeKey: `recon_correction:${rail}:${currency}:${date}`,
+        title: `El extracto corregido de ${rail} (${currency}) del ${date} ya no trae ${result.conflicts.length} movimiento(s) ya conciliado(s) y liberado(s)`,
+        detail: { statement_id: result.id, rail, currency, date, movements: result.conflicts.slice(0, 20) } });
+    }
+    const { conflicts, ...rest } = result;
+    return { ...rest, matched_but_removed: conflicts.length };
   }
 
   /** Concilia un riel y moneda en un día. Repetirla es seguro: lo ya cruzado no se vuelve a cruzar ni a liberar. */
@@ -147,7 +178,7 @@ export class ReconciliationService {
       const { rows: movements } = await c.query<{ id: string; reference: string; amount: bigint; day: string }>(
         `SELECT mv.id::text, mv.reference, mv.amount, to_char(mv.value_date, 'YYYY-MM-DD') AS day
            FROM reconciliation.movements mv
-          WHERE mv.rail = $1 AND mv.currency = $2 AND mv.amount > 0
+          WHERE mv.rail = $1 AND mv.currency = $2 AND mv.amount > 0 AND mv.superseded_by IS NULL
             AND mv.value_date BETWEEN $3::date - $4::int AND $3::date
             AND NOT EXISTS (SELECT 1 FROM reconciliation.matches m WHERE m.movement_id = mv.id)
           ORDER BY mv.value_date, mv.id`, params);
@@ -224,8 +255,8 @@ export class ReconciliationService {
       `SELECT pi.id FROM reconciliation.matches m JOIN payments.payment_intents pi ON pi.id = m.payment_intent_id
         WHERE pi.rail = $1 AND pi.charge_currency = $2 AND pi.funds_received_entry_id IS NULL ORDER BY pi.id`, [rail, currency]);
     if (!rows.length) return null;
-    const entry = await this.settlements.recordRailFunds(runId, rail, currency, rows.map((r) => r.id));
-    return entry.entryId;
+    const entry = await this.settlements.recordRailFunds(runId, rail, currency, rows.map((r) => r.id), { skipAlreadyReceived: true });
+    return entry?.entryId ?? null;
   }
 
   private async alertDiscrepancies(runId: string, rail: string, currency: Currency, date: string, found: Array<{ kind: DiscrepancyKind; detail: string }>) {

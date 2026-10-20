@@ -27,6 +27,8 @@ export function alertText(a: AlertInput): string {
  * misma `dedupeKey` no se repite: suma una ocurrencia y no se vuelve a enviar
  * hasta que alguien la marque como vista.
  */
+const RANK = (col: string) => `(CASE ${col} WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END)`;
+
 @Injectable()
 export class AlertsService {
   private readonly log = new Logger(AlertsService.name);
@@ -37,16 +39,20 @@ export class AlertsService {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
   async raise(a: AlertInput): Promise<{ id: string; created: boolean }> {
-    const { rows: [row] } = await this.pool.query<{ id: string; created: boolean }>(
-      `INSERT INTO platform.alerts (id, severity, kind, title, detail, dedupe_key) VALUES ($1, $2, $3, $4, $5, $6)
+    const { rows: [row] } = await this.pool.query<{ id: string; created: boolean; escalated: boolean }>(
+      `WITH prev AS (SELECT severity FROM platform.alerts WHERE dedupe_key = $6 AND acknowledged_at IS NULL)
+       INSERT INTO platform.alerts (id, severity, kind, title, detail, dedupe_key) VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (dedupe_key) WHERE acknowledged_at IS NULL
-       DO UPDATE SET occurrences = platform.alerts.occurrences + 1, last_seen_at = now(), title = EXCLUDED.title, detail = EXCLUDED.detail
-       RETURNING id, (xmax = 0) AS created`,
+       DO UPDATE SET occurrences = platform.alerts.occurrences + 1, last_seen_at = now(), title = EXCLUDED.title, detail = EXCLUDED.detail,
+                     severity = CASE WHEN ${RANK('EXCLUDED.severity')} < ${RANK('platform.alerts.severity')} THEN EXCLUDED.severity ELSE platform.alerts.severity END
+       RETURNING id, (xmax = 0) AS created,
+                 COALESCE(${RANK('$2')} < (SELECT ${RANK('prev.severity')} FROM prev), false) AS escalated`,
       [`alr_${randomBytes(10).toString('hex')}`, a.severity, a.kind, a.title, JSON.stringify(a.detail ?? {}), a.dedupeKey]);
     const line = `${a.severity.toUpperCase()} ${a.kind}: ${a.title}`;
     if (a.severity === 'critical') this.log.error(line); else this.log.warn(line);
     const url = process.env.ALERT_WEBHOOK_URL;
-    if (row.created && url) {
+    // Se envía la primera vez y cuando sube de gravedad (de atención a crítica)
+    if ((row.created || row.escalated) && url) {
       try {
         await this.send(url, JSON.stringify({ text: alertText(a), alert: { id: row.id, ...a } }));
         await this.pool.query('UPDATE platform.alerts SET delivered_at = now() WHERE id = $1', [row.id]);
@@ -55,7 +61,7 @@ export class AlertsService {
         await this.pool.query('UPDATE platform.alerts SET delivery_error = $2 WHERE id = $1', [row.id, (e as Error).message.slice(0, 300)]);
       }
     }
-    return row;
+    return { id: row.id, created: row.created };
   }
 
   async open(limit = 50) {

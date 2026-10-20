@@ -11,14 +11,19 @@ Código en `src/reconciliation/` y `src/alerts/`; tablas en el esquema `reconcil
    `reconciliation.statements` (riel, moneda, día, origen, SHA-256 del contenido) y sus movimientos en
    `reconciliation.movements` (monto en unidades mínimas, crédito > 0). El mismo archivo dos veces no duplica nada y
    un movimiento repetido en un archivo corregido tampoco (único por riel, moneda, fecha valor, referencia y monto).
+   **Un extracto corregido del mismo día reemplaza al anterior** (cada extracto es el día completo): los movimientos
+   que ya no trae quedan marcados `superseded_by` y no se concilian, y sus diferencias abiertas se cierran. Si lo que
+   quita ya estaba cruzado y liberado, eso no se deshace solo: alerta crítica `statement_correction_conflict` para
+   revisarlo a mano (la respuesta trae `superseded` y `matched_but_removed`).
 2. **Cruce** (`ReconciliationService.run`). Toma los cobros con asiento de captura del riel y moneda cuyo día de cobro
    (hora de Caracas) cae entre `fecha − RECON_LOOKBACK_DAYS` y `fecha`, y los créditos del banco de ese rango, que
    todavía no se hayan cruzado. Cruza por `rail_reference` = referencia del banco **y** monto igual al bruto cobrado.
    Cada cobro y cada movimiento se cruzan una sola vez (`reconciliation.matches`, append-only). Un lock por riel y
-   moneda evita dos corridas a la vez.
+   moneda evita dos corridas a la vez (también frente a una importación).
 3. **Liberación**. Los cobros cruzados que aún no tienen fondos recibidos pasan de *por recibir* a *disponible* para el
    comercio (`SettlementsService.recordRailFunds`, asiento `rail_funds_received` con `funds:<riel>:<rec_id>`). Solo
-   entonces entran en un corte de liquidación. Lo que no cuadró no se libera.
+   entonces entran en un corte de liquidación. Lo que no cuadró no se libera. Si dos corridas se cruzan, la que llega
+   después salta lo que la otra ya liberó (`skipAlreadyReceived`) en vez de fallar.
 4. **Diferencias** (`reconciliation.discrepancies`):
 
    | Tipo | Cuándo | Gravedad |
@@ -35,7 +40,8 @@ Código en `src/reconciliation/` y `src/alerts/`; tablas en el esquema `reconcil
    día (crítica si falta dinero o hay montos distintos); una que falla, `reconciliation_failed`. Se envían a
    `ALERT_WEBHOOK_URL` (cuerpo `{text, alert}`, sirve para Slack, Teams, Discord y Google Chat) y se ven en `/admin` →
    *Alertas* hasta que alguien las marca vistas. Una alerta abierta con la misma llave no se reenvía: suma
-   `occurrences`. Si el envío falla queda `delivery_error`.
+   `occurrences`; si sube de gravedad (de atención a crítica) pasa a crítica y se vuelve a enviar, y nunca baja
+   mientras siga abierta. Si el envío falla queda `delivery_error`.
 
 Repetir una corrida es seguro: lo cruzado no se vuelve a cruzar ni a liberar, y una corrida que falló a mitad deja que
 la siguiente libere lo pendiente.

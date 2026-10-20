@@ -109,7 +109,7 @@ Detalle en [legal.md](legal.md).
 - `security.mfa_recovery_codes`: SHA-256 de los códigos de respaldo y `used_at`. `security.mfa_audit`: append-only (`ledger.tg_immutable`).
 - `platform.operator_sessions (token_hash, operator_id, expires_at, revoked_at, ip)`: sesión `ops_` del panel interno.
 - `platform.rail_credentials`: secretos de los bancos versionados; `CHECK (sealed LIKE 'env:v1:%')` impide guardarlos en claro; índice único de la versión vigente por riel y nombre; `expires_at` de los certificados.
-- `reconciliation.statements`, `reconciliation.movements` (único por riel, moneda, fecha valor, referencia y monto), `reconciliation.runs`, `reconciliation.matches` (un cobro y un movimiento se cruzan una vez; append-only) y `reconciliation.discrepancies` (índice único de la diferencia abierta).
+- `reconciliation.statements`, `reconciliation.movements` (único por riel, moneda, fecha valor, referencia y monto; `superseded_by` cuando un extracto corregido ya no lo trae), `reconciliation.runs`, `reconciliation.matches` (un cobro y un movimiento se cruzan una vez; append-only) y `reconciliation.discrepancies` (índice único de la diferencia abierta).
 - `platform.alerts`: alertas con `dedupe_key` única mientras están abiertas.
 
 Detalle en [doble-factor.md](doble-factor.md), [gestor-de-secretos.md](gestor-de-secretos.md) y [conciliacion.md](conciliacion.md).
