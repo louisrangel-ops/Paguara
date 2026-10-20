@@ -11,9 +11,17 @@ reales) y `.env.development` (sandbox local, ficticio, versionado a propósito).
 | `PG_POOL_MAX` | `20` | Máximo de conexiones del pool | `src/database/database.ts` |
 | `REDIS_URL` | `redis://localhost:6379` | Idempotencia y límites de intentos | `src/app.module.ts` |
 | `PORT` | `3000` | Puerto HTTP | `src/main.ts` |
-| `INTERNAL_API_TOKEN` | — | Token de **sistema** de `/internal` (`X-Internal-Token`) para workers y cron: tasas, resultados de rieles, conciliación y cortes. No aprueba liquidaciones ni toca comercios; solo crea al primer maestro. Las personas usan su token `opk_…`. En despliegues públicos debe tener ≥ 32 caracteres y no ser el de ejemplo | `internal.controller.ts`, `secrets-check.ts` |
+| `INTERNAL_API_TOKEN` | — | Token de **sistema** de `/internal` (`X-Internal-Token`) para workers y cron: tasas, resultados de rieles, conciliación y cortes. No aprueba liquidaciones ni toca comercios; solo crea al primer maestro. Las personas entran con su token `opk_…` y el código de su app (sesión `ops_…`). En despliegues públicos debe tener ≥ 32 caracteres y no ser el de ejemplo | `internal.controller.ts`, `secrets-check.ts` |
 | `INTERNAL_PORT` | vacío | Puerto privado donde se sirven `/internal` y `/admin`; en `PORT` dan 404. **Obligatorio con `LIVEMODE=true`** y distinto de `PORT` | `src/main.ts`, `hardening.ts` |
-| `SECRETS_ENCRYPTION_KEY` | vacío | 64 caracteres hex (`openssl rand -hex 32`). Cifra con AES-256-GCM los `whsec_` en la base. **Obligatoria desplegada**; sin ella (solo local) se guardan en claro | `secret-box.ts`, `secrets-check.ts` |
+| `KMS_PROVIDER` | `local` | Gestor de llaves: `aws` (AWS KMS) o `local` (llave en `SECRETS_ENCRYPTION_KEY`). **`aws` obligatorio con `LIVEMODE=true`**. Ver [gestor-de-secretos.md](gestor-de-secretos.md) | `src/secrets/kms.ts`, `secrets-check.ts` |
+| `KMS_KEY_ID` | — | Con `KMS_PROVIDER=aws`: ARN, id o alias de la llave maestra. La API necesita `kms:GenerateDataKey` y `kms:Decrypt` sobre ella | `kms.ts` |
+| `AWS_REGION` (y credenciales estándar de AWS) | — | Región y credenciales del cliente de AWS KMS (rol del servicio o `AWS_*`) | `@aws-sdk/client-kms` |
+| `SECRETS_ENCRYPTION_KEY` | vacío | 64 caracteres hex (`openssl rand -hex 32`). Llave maestra **local**: cifra por sobre los secretos de la base (webhooks, doble factor, bancos). **Obligatoria desplegada con `KMS_PROVIDER=local`**; con `aws` es opcional y solo lee lo cifrado antes de migrar. Sin ella (solo local) los secretos se guardan en claro y no se aceptan secretos de bancos | `src/secrets/vault.ts`, `secrets-check.ts` |
+| `SECRETS_ENCRYPTION_PREVIOUS_KEYS` | vacío | Llaves locales anteriores (64 hex, separadas por coma): solo descifran, para rotar con `npm run secrets:rewrap` | `kms.ts`, `vault.ts` |
+| `OPERATOR_SESSION_HOURS` | `8` | Horas que dura la sesión del panel interno tras el doble factor (máximo 24) | `operators.service.ts` |
+| `ALERT_WEBHOOK_URL` | vacío | URL que recibe las alertas como `{text, alert}` (Slack, Teams, Discord, Google Chat). Sin ella solo quedan en `/admin` y en el log | `src/alerts/alerts.service.ts` |
+| `RECON_LOOKBACK_DAYS` | `7` | Días hacia atrás en que un cobro o un movimiento todavía puede cruzarse | `reconciliation.service.ts` |
+| `RECON_GRACE_DAYS` | `0` | Días de espera antes de reportar un cobro sin dinero en el banco | `reconciliation.service.ts` |
 | `PAYOUT_APPROVALS_REQUIRED` | `2` | Personas distintas que aprueban cada liquidación antes de pagarla. Con `LIVEMODE=true`, 2 o más | `settlements.service.ts`, `secrets-check.ts` |
 | `RATE_LIMIT_API_PER_MIN` | `600` | Peticiones por minuto por llave en `/v1` | `hardening.ts` |
 | `RATE_LIMIT_API_IP_PER_MIN` | `3000` | Tope por IP en `/v1`, además del de la llave (el límite corre antes de validar la llave) | `hardening.ts` |
@@ -43,6 +51,7 @@ Las variables `FX_*`, `LIVEMODE` y `FX_PAYOUT_SPREAD_BPS` se leen al cargar el m
 | `DEV_FX_RATES` | `USD/VES:BCV:36.5,USDT/VES:BINANCE_P2P:37.2,USD/USDT:EXCHANGE:1.0005` | Tasas fijas `par:fuente:tasa` |
 | `FX_REFRESH_SECONDS` | `3600` | Cada cuánto recarga las tasas |
 | `EXPIRE_EVERY_SECONDS` | `60` | Cada cuánto vence intents abandonados |
+| `RECON_EVERY_SECONDS` | `3600` | Cada cuánto concilia ayer y hoy contra el banco simulado del sandbox |
 
 Termina con error si `LIVEMODE=true`.
 
@@ -66,8 +75,15 @@ Termina con error si `LIVEMODE=true`.
 | `WEBHOOK_ALLOW_HTTP` / `WEBHOOK_ALLOW_PRIVATE` | `true` / `true` | `false` / `false` |
 | `PUBLIC_BASE_URL` | `http://localhost:3000` | El dominio público |
 | `TRUST_PROXY` | vacío | `1` detrás del balanceador |
-| `SECRETS_ENCRYPTION_KEY` | vacío (en claro) | `openssl rand -hex 32`, en el gestor de secretos |
+| `KMS_PROVIDER` / `KMS_KEY_ID` | `local` / vacío | Producción: `aws` y la llave de AWS KMS |
+| `SECRETS_ENCRYPTION_KEY` | vacío (en claro) | Sandbox: `openssl rand -hex 32`, en el gestor de secretos del hosting. Producción: no hace falta con AWS |
+| `ALERT_WEBHOOK_URL` | vacío | El webhook del canal de operaciones |
 | `INTERNAL_PORT` | vacío (mismo puerto) | Un puerto solo de la red privada (obligatorio en producción) |
 | `PAYOUT_APPROVALS_REQUIRED` | `1` | `2` o más |
 
 Al agregar una variable: documentarla aquí, agregarla a `.env.example` (y a `.env.development` si aplica) y al [CHANGELOG](CHANGELOG.md).
+
+## `reconcile` (cron diario)
+
+`node dist/scripts/reconcile.js [AAAA-MM-DD]` usa `APP_URL` (el puerto interno) e `INTERNAL_API_TOKEN`. Ver
+[conciliacion.md](conciliacion.md#job-diario).

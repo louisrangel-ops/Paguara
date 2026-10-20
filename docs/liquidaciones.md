@@ -13,6 +13,9 @@ sale a `platform:cash` y queda una instrucción de pago para tesorería).
 
 ## 1. Conciliación de fondos del riel
 
+Lo hace sola la **conciliación diaria** ([conciliacion.md](conciliacion.md)): cada cobro que cuadra con el extracto del
+banco por referencia y monto se libera con `recordRailFunds` (lote = id de la corrida `rec_…`); lo que no cuadra no se
+libera y queda como diferencia. También se puede a mano:
 `POST /internal/rail_batches {batch_id, rail, currency, payment_intent_ids}` → `recordRailFunds`.
 
 - Bloquea los intents y exige que estén cobrados (`payment_not_captured`), sean de ese riel y moneda (`batch_mismatch`) y no estén ya conciliados (`funds_already_received`).
@@ -56,7 +59,7 @@ Repetir el mismo `batch_code` no liquida dos veces: los intents ya están `settl
 Una instrucción `on_hold` no la ve tesorería. La liberan las aprobaciones de personas distintas del panel interno:
 
 - `GET /internal/payouts/pending`: bandeja con comercio, lote, monto, cuenta y quién aprobó ya.
-- `POST /internal/payouts/:id/approve`: con el token personal de un operador (`opk_…`), nunca con el de sistema
+- `POST /internal/payouts/:id/approve`: con la sesión personal de un operador (`ops_…`, token `opk_` más doble factor), nunca con el de sistema
   (403 `insufficient_role`). Cada persona cuenta una vez (409 `already_approved_by_you`). Al llegar a
   `approvals_required`, la liquidación pasa a `approved` y sus instrucciones a `pending` (lista para el dispersor).
 - La base lo impone con triggers (`P0020` → 409 `payout_not_approved`): una instrucción no sale de `on_hold` sin la

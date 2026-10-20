@@ -20,7 +20,7 @@ async function post(path: string, body: unknown, headers: Record<string, string>
 // Primer maestro del panel interno (/admin): solo se puede crear una vez con el token de sistema
 async function bootstrapMaster(token: string) {
   const master = await post('/internal/operators', { name: 'maestro-dev', role: 'master' }, { 'x-internal-token': token });
-  if (master.status < 300) console.log(`Maestro:   ${master.body.token}   (entra a /admin con este token; no se vuelve a mostrar)`);
+  if (master.status < 300) console.log(`Maestro:   ${master.body.token}   (entra a /admin con este token y activa tu app autenticadora; no se vuelve a mostrar)`);
   else if (master.status === 403) console.log('Maestro:   ya existe; pídele un token al maestro actual');
   else throw new Error(`operators → ${master.status} ${JSON.stringify(master.body)}`);
 }

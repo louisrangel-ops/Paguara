@@ -21,8 +21,9 @@
 | Secreto | Cómo |
 |---|---|
 | `INTERNAL_API_TOKEN` | Cambiar la variable y reiniciar la API y `dev-jobs` |
-| Token de operador `opk_…` | El maestro revoca a la persona en `/admin` (o `POST /internal/operators/:id/revoke`) y le crea uno nuevo |
-| `SECRETS_ENCRYPTION_KEY` | Aún sin rotación automática: descifrar con la vieja y volver a cifrar con la nueva requiere un script (pendiente) |
+| Token de operador `opk_…` | El maestro revoca a la persona en `/admin` (o `POST /internal/operators/:id/revoke`), lo que cierra sus sesiones `ops_`, y le crea uno nuevo |
+| `SECRETS_ENCRYPTION_KEY` / llave del KMS | `npm run secrets:rewrap` vuelve a cifrar todo con la llave activa; pasos en [gestor-de-secretos.md](gestor-de-secretos.md#rotación) |
+| Secretos de los bancos | Cargar la versión nueva en `/admin` → *Secretos de los bancos*; la anterior queda retirada |
 | Llave `sk_`/`pk_` | *Rotar* en el panel (`POST /api/dashboard/api_keys/:id/roll`): crea una nueva y revoca la anterior |
 | `whsec_` de un webhook | Crear un endpoint nuevo y desactivar el anterior |
 
@@ -65,8 +66,10 @@ por despliegue. Detalle en [api.md](api.md#llaves-api).
 
 ## Panel interno (`/admin`) y operadores
 
-- Cada persona entra con **su propio token** (`opk_` + 48 hex; en `platform.operators` solo su SHA-256). El
-  `INTERNAL_API_TOKEN` es de los procesos automáticos: el panel no lo acepta.
+- Cada persona entra con **su propio token** (`opk_` + 48 hex; en `platform.operators` solo su SHA-256) **más el código
+  de su app autenticadora**: el doble factor es obligatorio y abre una sesión `ops_…` de `OPERATOR_SESSION_HOURS` horas.
+  El token solo ya no abre `/internal` (401 `operator_session_required`). Ver [doble-factor.md](doble-factor.md#panel-interno-obligatorio).
+  El `INTERNAL_API_TOKEN` es de los procesos automáticos: el panel no lo acepta.
 - RBAC por permisos: **master** (superadmin), **compliance**, **operations**, **treasury**, **support**, **auditor** y
   **operator** legado. La API valida el permiso aunque la interfaz oculte la acción. `GET /internal/whoami` devuelve
   los permisos efectivos. El master crea, reasigna o revoca operadores; no puede dejar la plataforma sin otro master.
@@ -77,15 +80,23 @@ por despliegue. Detalle en [api.md](api.md#llaves-api).
   capabilities_methods_by_contract`); el maestro lo habilita con `contract_ref` del contrato firmado (400
   `contract_required` sin él), que queda en `merchants.capabilities.contract_ref`.
 - **Doble aprobación de liquidaciones**: ver [liquidaciones.md](liquidaciones.md#4-aprobación-antes-de-pagar).
-- La página no trae datos; el token queda en `sessionStorage` y se borra al cerrar la pestaña. Se sirve con
+- La página no trae datos; solo la sesión `ops_` queda en `sessionStorage` y se borra al cerrar la pestaña. Se sirve con
   `Cache-Control: no-store`, `X-Frame-Options: DENY` y `Referrer-Policy: no-referrer`.
 
 ## Webhooks
 
 Firma HMAC-SHA256 y protección SSRF por IP efectiva de conexión: [webhooks.md](webhooks.md#protección-ssrf).
-Los secretos `whsec_` se guardan cifrados con AES-256-GCM (`enc:v1:<iv>:<tag>:<cifrado>`, `src/common/secret-box.ts`)
-con la llave de `SECRETS_ENCRYPTION_KEY`, que vive en el gestor de secretos del hosting: un respaldo robado de la base
-no sirve para firmar webhooks. Los guardados antes en claro se siguen leyendo.
+Los secretos `whsec_` se guardan cifrados por sobre con el KMS (`env:v1:…`, `src/secrets/vault.ts`): un respaldo
+robado de la base no sirve para firmar webhooks. Los guardados antes en `enc:v1:` o en claro se siguen leyendo y
+`npm run secrets:rewrap` los pasa al formato nuevo. Ver [gestor-de-secretos.md](gestor-de-secretos.md).
+
+## Doble factor, secretos de los bancos y conciliación
+
+- **Doble factor** (TOTP y códigos de respaldo): obligatorio en `/admin`, opcional en el panel del comercio y exigido
+  al cambiar la cuenta de liquidación si está activo. Ver [doble-factor.md](doble-factor.md).
+- **Llaves y certificados de los bancos** en `platform.rail_credentials`, cifrados por sobre con el KMS; la base rechaza
+  un valor en claro. Ver [gestor-de-secretos.md](gestor-de-secretos.md#secretos-de-los-bancos-srcsecretsrail-credentialsservicets).
+- **Conciliación diaria** banco ↔ ledger con alertas a `ALERT_WEBHOOK_URL`. Ver [conciliacion.md](conciliacion.md).
 
 ## Base de datos
 
@@ -94,7 +105,6 @@ app o un `UPDATE` manual no puede descuadrar el ledger, editar un saldo ni cambi
 
 ## Pendiente
 
-- Llave de cifrado en un KMS con rotación (hoy: variable de entorno) y script para volver a cifrar los secretos viejos.
-- Doble factor (2FA) para el panel del comercio y para los operadores; pedirlo también al cambiar la cuenta de liquidación.
+- **Prueba de penetración externa** por una empresa independiente antes de cobrar dinero real (la contrata luis: empresa y fecha por definir).
 - Recuperación de contraseña e invitación de usuarios; permisos por rol en el resto del panel.
-- Conciliación bancaria diaria contra el ledger, alertas y prueba de penetración externa antes de cobrar dinero real.
+- Avisos por correo (2FA activado o reiniciado, solicitudes aprobadas o rechazadas); no hay envío de correo todavía.

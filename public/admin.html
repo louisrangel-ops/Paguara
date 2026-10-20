@@ -94,6 +94,14 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
 .banner { border-radius: var(--radius); padding: 12px 16px; }
 .banner.bad { background: var(--bad-soft); color: var(--bad); }
 .banner.ok { background: var(--ok-soft); color: var(--ok); }
+.banner.warn { background: var(--warn-soft); color: var(--warn); }
+h3 { margin: 4px 0 0; font-size: 16px; }
+.qr { justify-self: start; padding: 12px; background: #fff; border-radius: var(--radius); border: 1px solid var(--line); min-height: 184px; min-width: 184px; }
+.codes { margin: 0; padding: 14px 18px; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; background: var(--surface-2); border-radius: var(--radius); font-family: var(--font-figure); font-size: 15px; }
+.alerts { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.alerts li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); }
+.alerts li.critical { border-color: var(--bad); background: var(--bad-soft); }
+textarea { width: 100%; min-height: 96px; padding: 8px 12px; border: 1.5px solid var(--field-line); border-radius: 10px; background: var(--surface); color: inherit; font-family: var(--font-figure); font-size: 13px; }
 .empty { padding: 28px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius); }
 /* Interruptor: sigue siendo un checkbox nativo (teclado, lector de pantalla), solo cambia la forma */
 .check { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; min-height: 40px; }
@@ -110,29 +118,72 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
   <span class="brand"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M4 4h16a2 2 0 0 1 2 2v3a3 3 0 0 0 0 6v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 1 2-2zM14.25 6.5h1.5v2.6h-1.5zM14.25 10.7h1.5v2.6h-1.5zM14.25 14.9h1.5v2.6h-1.5z"/></svg><span translate="no">Paguara</span></span>
   <span class="tag">Interno</span>
   <span class="who" id="who"></span>
+  <button class="btn ghost" type="button" id="logout" hidden>Salir</button>
 </div></header>
 <main id="main">
   <div class="intro">
     <h1>Panel interno</h1>
-    <p class="muted">Administración integral de Paguara: comercios y KYC, perfiles ISO 8583, métodos por contrato, liquidaciones, operación de plataforma y usuarios internos con permisos por rol. Cada acción sensible queda asociada al operador.</p>
+    <p class="muted">Administración integral de Paguara: comercios y KYC, perfiles ISO 8583, métodos por contrato, liquidaciones, conciliación bancaria y alertas, secretos de los bancos, operación de plataforma y usuarios internos con permisos por rol. Cada acción sensible queda asociada al operador.</p>
   </div>
 
   <form class="card auth" id="auth" autocomplete="off">
     <h2>Acceso</h2>
     <div class="row">
       <div class="field"><label for="token">Tu token de operador</label><input id="token" type="password" required spellcheck="false" autocomplete="off" placeholder="opk_…"></div>
+      <div class="field"><label for="code">Código de tu app</label><input id="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" maxlength="11" placeholder="123456" style="width:150px"></div>
       <button class="btn" type="submit">Entrar</button>
     </div>
-    <p class="muted">Cada persona tiene su propio token; te lo da el maestro de Paguara. Se guarda solo en esta pestaña y se borra al cerrarla.</p>
+    <p class="muted">Cada persona tiene su propio token; te lo da el maestro de Paguara. Además va el código de 6 dígitos de tu app autenticadora (o uno de tus códigos de respaldo). La primera vez te pedimos activarla. La sesión dura unas horas y se borra al cerrar la pestaña.</p>
     <div id="auth-err" role="alert"></div>
   </form>
 
+  <section class="card auth" id="enroll" hidden aria-labelledby="enroll-h">
+    <h2 id="enroll-h" tabindex="-1">Activa el doble factor</h2>
+    <p>El panel interno exige un segundo factor. Escanea este código con Google Authenticator, Microsoft Authenticator, 1Password o Authy y escribe el número de 6 dígitos que te muestra.</p>
+    <div class="qr" id="qr" role="img" aria-label="Código QR para la app autenticadora"></div>
+    <p class="muted">¿No puedes escanearlo? Escribe esta clave en la app: <code id="secret" translate="no"></code></p>
+    <form class="row" id="enroll-form">
+      <div class="field"><label for="enroll-code">Código de 6 dígitos</label><input id="enroll-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required pattern="[0-9]{6}" style="width:150px"></div>
+      <button class="btn" type="submit">Activar y entrar</button>
+    </form>
+    <div id="enroll-err" role="alert"></div>
+  </section>
+
+  <section class="card auth" id="codes" hidden aria-labelledby="codes-h">
+    <h2 id="codes-h" tabindex="-1">Guarda tus códigos de respaldo</h2>
+    <p>Cada uno sirve una sola vez si pierdes el teléfono. Guárdalos en tu gestor de contraseñas: no se vuelven a mostrar. Si pierdes el teléfono y los códigos, otro maestro reinicia tu doble factor.</p>
+    <ul class="codes" id="codes-list"></ul>
+    <button class="btn" type="button" id="codes-done">Ya los guardé</button>
+  </section>
+
   <div id="app" hidden>
     <div style="display:grid;gap:20px">
+      <section class="card" data-perm="alerts:read" aria-labelledby="al-h">
+        <h2 id="al-h">Alertas<span class="count" id="al-count" hidden></span></h2>
+        <div id="alerts"></div>
+      </section>
       <section class="card" data-perm="payouts:read" aria-labelledby="po-h">
         <div class="head"><h2 id="po-h">Liquidaciones por aprobar<span class="count" id="po-count" hidden></span></h2><button class="btn ghost" type="button" id="reload">Actualizar</button></div>
         <p class="muted">Ninguna liquidación llega a tesorería sin la aprobación de personas distintas. Revisa monto, comercio y cuenta antes de aprobar.</p>
         <div id="payouts"></div>
+      </section>
+      <section class="card" data-perm="reconciliation:read" aria-labelledby="rec-h">
+        <h2 id="rec-h">Conciliación bancaria<span class="count" id="rec-count" hidden></span></h2>
+        <p class="muted">Cada mañana se cruza el extracto de cada banco con los cobros del día anterior, por referencia y monto. Lo que cuadra se libera a los comercios; lo que no, queda aquí hasta que alguien explique qué pasó.</p>
+        <div id="discrepancies"></div>
+        <div data-perm="reconciliation:run">
+        <h3>Subir un extracto</h3>
+        <form class="row" id="st-form">
+          <div class="field"><label for="st-rail">Riel</label><select id="st-rail"></select></div>
+          <div class="field"><label for="st-date">Día del extracto</label><input id="st-date" type="date" required></div>
+          <div class="field"><label for="st-file">Archivo CSV</label><input id="st-file" type="file" accept=".csv,text/csv" required></div>
+          <button class="btn" type="submit">Subir y conciliar</button>
+        </form>
+        <p class="muted">Columnas: fecha, referencia, monto y descripción, separadas por coma o punto y coma. Fecha AAAA-MM-DD o DD/MM/AAAA; monto con coma o punto decimal; los débitos en negativo.</p>
+        <div id="st-out" role="status"></div>
+        </div>
+        <h3>Últimas corridas</h3>
+        <div id="runs"></div>
       </section>
       <section class="card" data-perm="capabilities:read" aria-labelledby="req-h">
         <h2 id="req-h">Solicitudes de métodos y módulos<span class="count" id="req-count" hidden></span></h2>
@@ -161,6 +212,31 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
         </form>
         <div id="merchant"></div>
       </section>
+      <section class="card" data-perm="secrets:read" aria-labelledby="cred-h">
+        <h2 id="cred-h">Secretos de los bancos</h2>
+        <p class="muted">Llaves de API, claves y certificados que entrega cada banco. Se guardan cifrados con el gestor de llaves (KMS) y no se vuelven a mostrar: para cambiar uno, carga una versión nueva.</p>
+        <div id="creds"></div>
+        <form id="cred-form" data-perm="secrets:manage" style="display:grid;gap:12px">
+          <div class="row">
+            <div class="field"><label for="cred-rail">Riel</label><input id="cred-rail" required pattern="[a-z0-9_]{2,40}" placeholder="ves_c2p" spellcheck="false" style="width:170px"></div>
+            <div class="field"><label for="cred-name">Nombre</label><input id="cred-name" required pattern="[a-z0-9_]{2,40}" placeholder="client_cert" spellcheck="false" style="width:170px"></div>
+            <div class="field"><label for="cred-kind">Tipo</label><select id="cred-kind"><option value="api_key">Llave de API</option><option value="password">Clave</option><option value="certificate">Certificado (PEM)</option><option value="private_key">Llave privada (PEM)</option><option value="pkcs12">Archivo .p12 / .pfx</option></select></div>
+            <div class="field"><label for="cred-file">O desde un archivo</label><input id="cred-file" type="file"></div>
+          </div>
+          <div class="field"><label for="cred-value">Valor</label><textarea id="cred-value" spellcheck="false" autocomplete="off" placeholder="Pega la llave o el PEM, o elige el archivo"></textarea></div>
+          <div><button class="btn" type="submit">Guardar cifrado</button></div>
+        </form>
+        <div id="cred-out" role="status"></div>
+      </section>
+      <section class="card" data-perm="security:manage" aria-labelledby="sup-h">
+        <h2 id="sup-h">Doble factor de un comercio</h2>
+        <p class="muted">Si alguien de un comercio perdió el teléfono y sus códigos de respaldo, verifica su identidad (videollamada con su cédula, correo desde la cuenta registrada) antes de reiniciarlo. Se cierran sus sesiones y queda en la auditoría con tu nombre y el motivo.</p>
+        <form class="row" id="sup-form">
+          <div class="field"><label for="sup-email">Correo del usuario</label><input id="sup-email" type="email" required spellcheck="false" placeholder="ana@negocio.com" style="width:260px"></div>
+          <button class="btn" type="submit">Buscar</button>
+        </form>
+        <div id="sup-out"></div>
+      </section>
       <section class="card" data-perm="operators:read" aria-labelledby="op-h">
         <h2 id="op-h">Operadores</h2>
         <form class="row" id="op-form" data-perm="operators:manage">
@@ -176,6 +252,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
   <p class="sr-only" id="status" role="status" aria-live="polite"></p>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -205,49 +282,105 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     set(k, v) { try { sessionStorage.setItem(k, v); } catch (_) { /* sin almacenamiento: se pide de nuevo */ } },
     del(k) { try { sessionStorage.removeItem(k); } catch (_) { /* nada que borrar */ } },
   };
-  let token = store.get('paguara.internal.token');
+  // Solo la sesión ops_ (con doble factor) se guarda; el token opk_ queda en memoria mientras se entra
+  let session = store.get('paguara.internal.session');
   let me = null;
+  let pendingToken = '';
 
-  async function api(method, path, body) {
+  async function call(method, path, body, headers) {
     const res = await fetch('/internal' + path, {
-      method, headers: Object.assign({ 'X-Internal-Token': token, Accept: 'application/json' }, body ? { 'Content-Type': 'application/json' } : {}),
+      method, headers: Object.assign({ Accept: 'application/json' }, headers || {}, body ? { 'Content-Type': 'application/json' } : {}),
       body: body ? JSON.stringify(body) : undefined,
     });
     let data = null;
     try { data = await res.json(); } catch (_) { /* sin cuerpo */ }
-    if (!res.ok) throw Object.assign(new Error((data && data.error && data.error.message) || 'Error ' + res.status), { status: res.status });
+    if (!res.ok) throw Object.assign(new Error((data && data.error && data.error.message) || 'Error ' + res.status), { status: res.status, code: data && data.error && data.error.code });
     return data;
+  }
+  async function api(method, path, body) {
+    try { return await call(method, path, body, { 'X-Internal-Token': session }); }
+    catch (e) { if (e.status === 401) signedOut('Tu sesión venció. Vuelve a entrar con tu token y el código de tu app.'); throw e; }
   }
   const fail = (slot, e) => slot.replaceChildren(el('div', { class: 'banner bad', role: 'alert', text: e.message }));
   const ROLE_LABELS = { master:'Maestro / Superadmin', operator:'Operador legado', compliance:'Cumplimiento', operations:'Operaciones', treasury:'Tesorería', support:'Soporte', auditor:'Auditor' };
   const can = (p) => !!(me && Array.isArray(me.permissions) && me.permissions.includes(p));
+  function show(id) {
+    for (const s of ['auth', 'enroll', 'codes', 'app']) $(s).hidden = s !== id;
+    $('logout').hidden = id !== 'app';
+  }
+  function signedOut(msg) {
+    session = ''; me = null; store.del('paguara.internal.session');
+    $('who').textContent = '';
+    show('auth');
+    if (msg) fail($('auth-err'), new Error(msg));
+  }
 
   $('auth').addEventListener('submit', async (e) => {
     e.preventDefault();
-    token = $('token').value.trim();
-    if (token) await start();
+    $('auth-err').replaceChildren();
+    pendingToken = $('token').value.trim();
+    if (!pendingToken) return;
+    try {
+      const r = await call('POST', '/auth/session', { token: pendingToken, code: $('code').value.trim() || undefined });
+      if (r.mfa_enrollment_required) return enroll();
+      enter(r);
+    } catch (err) {
+      fail($('auth-err'), err.code === 'mfa_code_required' ? new Error('Escribe el código de 6 dígitos de tu app autenticadora.') : err);
+    }
+  });
+  async function enroll() {
+    try {
+      const { secret, otpauth_url } = await call('POST', '/auth/mfa/setup', { token: pendingToken });
+      $('secret').textContent = secret.replace(/(.{4})/g, '$1 ').trim();
+      $('qr').replaceChildren();
+      if (window.QRCode) new QRCode($('qr'), { text: otpauth_url, width: 160, height: 160 });
+      else $('qr').hidden = true;
+      show('enroll');
+      $('enroll-h').focus();
+    } catch (err) { fail($('auth-err'), err); }
+  }
+  $('enroll-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await call('POST', '/auth/mfa/confirm', { token: pendingToken, code: $('enroll-code').value.trim() });
+      $('codes-list').replaceChildren(...r.recovery_codes.map((c) => el('li', { text: c, translate: 'no' })));
+      $('codes-done').onclick = () => enter(r);
+      show('codes');
+      $('codes-h').focus();
+    } catch (err) { fail($('enroll-err'), err); }
+  });
+  function enter(r) {
+    pendingToken = ''; $('token').value = ''; $('code').value = ''; $('enroll-code').value = '';
+    session = r.session;
+    store.set('paguara.internal.session', session);
+    if (r.used_recovery_code) alert('Entraste con un código de respaldo y ya no sirve. Si te quedan pocos, pide a otro maestro que reinicie tu doble factor y vuelve a activarlo.');
+    start();
+  }
+  $('logout').addEventListener('click', async () => {
+    try { await call('POST', '/auth/logout', null, { 'X-Internal-Token': session }); } catch (_) { /* igual se sale */ }
+    signedOut();
   });
   async function start() {
     try {
       me = await api('GET', '/whoami');
       if (me.kind !== 'operator') throw new Error('Ese es el token de los procesos automáticos. Entra con tu token personal de operador (opk_…).');
     } catch (e) {
-      store.del('paguara.internal.token');
-      $('auth').hidden = false; $('app').hidden = true;
-      fail($('auth-err'), e.status === 401 ? new Error('Token inválido o revocado') : e);
+      if (e.status !== 401) signedOut(e.message);
       return;
     }
-    store.set('paguara.internal.token', token);
-    $('auth').hidden = true; $('app').hidden = false;
+    show('app');
     $('who').textContent = me.name + ' · ' + (ROLE_LABELS[me.role] || me.role);
     document.querySelectorAll('[data-perm]').forEach((n) => { n.hidden = !can(n.dataset.perm); });
     refresh();
   }
   function refresh() {
+    if (can('alerts:read')) loadAlerts();
     if (can('payouts:read')) loadPayouts();
+    if (can('reconciliation:read')) loadReconciliation();
     if (can('capabilities:read')) loadRequests();
     if (can('platform:manage')) loadGlobals();
     if (can('merchants:read')) loadMerchantList();
+    if (can('secrets:read')) loadCreds();
     if (can('operators:read')) loadOperators();
   }
   $('reload').addEventListener('click', refresh);
@@ -294,6 +427,159 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
       ])]));
     } catch (e) { fail(slot, e); }
   }
+
+  // ---- Alertas ------------------------------------------------------------------
+  async function loadAlerts() {
+    const slot = $('alerts');
+    try {
+      const { data } = await api('GET', '/alerts');
+      counter('al-count', data.length, 'alerta', 'alertas');
+      if (!data.length) { slot.replaceChildren(el('p', { class: 'empty', text: 'Sin alertas abiertas.' })); return; }
+      const SEV = { critical: ['Crítica', 'bad'], warning: ['Atención', 'warn'], info: ['Aviso', 'note'] };
+      slot.replaceChildren(el('ul', { class: 'alerts' }, data.map((a) => el('li', { class: a.severity }, [
+        el('div', {}, [pill(SEV[a.severity][0], SEV[a.severity][1]), ' ', el('b', { text: a.title }),
+          el('div', { class: 'muted', text: when(a.last_seen_at) + (a.occurrences > 1 ? ' · ' + a.occurrences + ' veces' : '') + (a.delivery_error ? ' · no se pudo avisar: ' + a.delivery_error : '') })]),
+        el('button', { class: 'btn ghost', type: 'button', text: 'Marcar vista', 'aria-label': 'Marcar vista la alerta: ' + a.title, onclick: async () => {
+          try { await api('POST', '/alerts/' + encodeURIComponent(a.id) + '/acknowledge'); say('Alerta marcada como vista'); loadAlerts(); } catch (e) { alert(e.message); }
+        } }),
+      ]))));
+    } catch (e) { fail(slot, e); }
+  }
+
+  // ---- Conciliación -------------------------------------------------------------
+  // Riel y moneda de cada método de pago (src/payment-intents/payment-methods.ts)
+  const RAILS = [['ves_c2p', 'VES', 'Pago Móvil C2P'], ['ves_p2p', 'VES', 'Pago Móvil P2P'], ['ves_debito_inm', 'VES', 'Débito inmediato'],
+    ['ves_card_switch', 'VES', 'Tarjeta nacional'], ['offshore_card', 'USD', 'Tarjeta internacional'], ['zelle', 'USD', 'Zelle'],
+    ['banesco_panama', 'USD', 'Banesco Panamá'], ['usdt_trc20', 'USDT', 'USDT TRC-20'], ['usdt_polygon', 'USDT', 'USDT Polygon'], ['cash_network', 'USD', 'Efectivo']];
+  $('st-rail').replaceChildren(...RAILS.map(([r, c, n]) => el('option', { value: r + '|' + c, text: n + ' (' + c + ')' })));
+  const KIND = { missing_in_bank: ['Cobro sin dinero en el banco', 'bad'], amount_mismatch: ['Monto distinto', 'bad'],
+    missing_in_ledger: ['Crédito sin cobro', 'warn'], statement_missing: ['Falta el extracto', 'warn'] };
+  const RUN = { clean: ['Cuadra', 'ok'], discrepancies: ['Con diferencias', 'warn'], failed: ['Falló', 'bad'], running: ['Corriendo', 'note'] };
+  async function loadReconciliation() {
+    const slot = $('discrepancies'), runs = $('runs');
+    try {
+      const [{ data }, { data: last }] = await Promise.all([api('GET', '/reconciliation/discrepancies'), api('GET', '/reconciliation/runs?limit=20')]);
+      counter('rec-count', data.length, 'diferencia abierta', 'diferencias abiertas');
+      slot.replaceChildren(!data.length ? el('p', { class: 'empty', text: 'No hay diferencias abiertas.' }) : el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, ['Diferencia', 'Riel', 'Detalle', 'Desde', 'Qué pasó', ''].map((t) => el('th', { scope: 'col', text: t })))]),
+        el('tbody', {}, data.map((d) => {
+          const note = el('input', { class: 'sm', style: 'width:220px', maxlength: '500', placeholder: 'Reverso del banco, ticket 123…', 'aria-label': 'Qué pasó con: ' + d.detail });
+          return el('tr', {}, [
+            el('th', { scope: 'row' }, [pill(...(KIND[d.kind] || [d.kind, '']))]),
+            el('td', {}, [el('code', { text: d.rail + ' · ' + d.currency })]),
+            el('td', { text: d.detail }),
+            el('td', { text: when(d.created_at) }),
+            el('td', {}, [note]),
+            el('td', { class: 'actions' }, [el('button', { class: 'btn', type: 'button', text: 'Cerrar', 'aria-label': 'Cerrar la diferencia: ' + d.detail, onclick: async () => {
+              if (note.value.trim().length < 5) { note.focus(); alert('Escribe qué pasó y qué se hizo (al menos 5 caracteres).'); return; }
+              try { await api('POST', '/reconciliation/discrepancies/' + encodeURIComponent(d.id) + '/resolve', { resolution: note.value.trim() }); say('Diferencia cerrada'); loadReconciliation(); }
+              catch (e) { alert(e.message); }
+            } })]),
+          ]);
+        })),
+      ])]));
+      runs.replaceChildren(!last.length ? el('p', { class: 'empty', text: 'Todavía no hay conciliaciones.' }) : el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, ['Día', 'Riel', 'Estado', 'Cobros cruzados', 'Movimientos del banco', 'Corrió'].map((t) => el('th', { scope: 'col', text: t })))]),
+        el('tbody', {}, last.map((r) => el('tr', {}, [
+          el('th', { scope: 'row', text: r.run_date }),
+          el('td', {}, [el('code', { text: r.rail + ' · ' + r.currency })]),
+          el('td', {}, [pill(...(RUN[r.status] || [r.status, ''])), r.error ? el('div', { class: 'muted', text: r.error }) : null]),
+          el('td', { class: 'num', text: r.matched_count == null ? '—' : r.matched_count + ' de ' + (r.ledger_count ?? 0) }),
+          el('td', { class: 'num', text: r.bank_count == null ? '—' : String(r.bank_count) }),
+          el('td', { text: when(r.started_at) + ' · ' + r.triggered_by.replace(/^platform:/, '') }),
+        ]))),
+      ])]));
+    } catch (e) { fail(slot, e); }
+  }
+  $('st-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const out = $('st-out');
+    const [rail, currency] = $('st-rail').value.split('|');
+    const file = $('st-file').files[0];
+    if (!file) return;
+    try {
+      const imported = await api('POST', '/reconciliation/statements', { rail, currency, statement_date: $('st-date').value, csv: await file.text() });
+      const run = await api('POST', '/reconciliation/runs', { rail, currency, date: $('st-date').value });
+      out.replaceChildren(el('div', { class: 'banner ' + (run.status === 'clean' ? 'ok' : 'warn') },
+        [(imported.duplicate ? 'Ese archivo ya se había subido. ' : imported.new_movements + ' movimientos nuevos. ') +
+          (run.status === 'clean' ? 'Todo cuadra: ' + run.matched_count + ' cobros cruzados.' : run.discrepancies.length + ' diferencia(s); revísalas arriba.')]));
+      $('st-file').value = '';
+      loadReconciliation(); loadAlerts();
+    } catch (err) { fail(out, err); }
+  });
+
+  // ---- Secretos de los bancos ----------------------------------------------------
+  const CRED = { api_key: 'Llave de API', password: 'Clave', certificate: 'Certificado', private_key: 'Llave privada', pkcs12: 'Archivo .p12' };
+  async function loadCreds() {
+    const slot = $('creds');
+    try {
+      const { data } = await api('GET', '/rail_credentials');
+      if (!data.length) { slot.replaceChildren(el('p', { class: 'empty', text: 'Todavía no hay secretos de bancos cargados.' })); return; }
+      slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, ['Riel y nombre', 'Tipo', 'Versión', 'Huella', 'Vence', 'Cargado', ''].map((t) => el('th', { scope: 'col', text: t })))]),
+        el('tbody', {}, data.map((c) => {
+          const soon = c.expires_at && new Date(c.expires_at) - Date.now() < 30 * 864e5;
+          return el('tr', {}, [
+            el('th', { scope: 'row' }, [el('code', { text: c.rail + ' / ' + c.name })]),
+            el('td', { text: CRED[c.kind] || c.kind }),
+            el('td', { class: 'num', text: 'v' + c.version }),
+            el('td', {}, [el('code', { text: c.fingerprint })]),
+            el('td', {}, [c.expires_at ? pill(new Date(c.expires_at).toLocaleDateString('es-VE'), soon ? 'bad' : 'ok') : el('span', { class: 'muted', text: '—' })]),
+            el('td', { text: when(c.created_at) + ' · ' + c.created_by.replace(/^platform:/, '') }),
+            el('td', { class: 'actions' }, [el('button', { class: 'btn danger', type: 'button', text: 'Retirar', 'aria-label': 'Retirar ' + c.rail + ' / ' + c.name, onclick: async () => {
+              if (!confirm('¿Retirar ' + c.rail + ' / ' + c.name + '? El conector del banco dejará de tenerlo.')) return;
+              try { await api('POST', '/rail_credentials/' + encodeURIComponent(c.rail) + '/' + encodeURIComponent(c.name) + '/retire'); say('Secreto retirado'); loadCreds(); } catch (e) { alert(e.message); }
+            } })]),
+          ]);
+        })),
+      ])]));
+    } catch (e) { fail(slot, e); }
+  }
+  $('cred-file').addEventListener('change', async () => {
+    const f = $('cred-file').files[0];
+    if (!f) return;
+    if ($('cred-kind').value === 'pkcs12' || /\.(p12|pfx)$/i.test(f.name)) {
+      $('cred-kind').value = 'pkcs12';
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+      $('cred-value').value = btoa(bin);
+    } else $('cred-value').value = await f.text();
+  });
+  $('cred-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const out = $('cred-out');
+    try {
+      const r = await api('POST', '/rail_credentials', { rail: $('cred-rail').value.trim(), name: $('cred-name').value.trim(), kind: $('cred-kind').value, value: $('cred-value').value });
+      out.replaceChildren(el('div', { class: 'banner ok', text: 'Guardado cifrado: ' + r.rail + ' / ' + r.name + ' v' + r.version + (r.same_as_previous ? ' (igual a la versión anterior)' : '') + (r.expires_at ? ' · vence el ' + new Date(r.expires_at).toLocaleDateString('es-VE') : '') }));
+      $('cred-value').value = ''; $('cred-file').value = '';
+      loadCreds();
+    } catch (err) { fail(out, err); }
+  });
+
+  // ---- Doble factor de un comercio -------------------------------------------------
+  const askReason = (who) => {
+    const r = prompt('Motivo del reinicio de ' + who + ' y cómo verificaste su identidad:');
+    if (r === null) return null;
+    if (r.trim().length < 10) { alert('Escribe un motivo de al menos 10 caracteres.'); return null; }
+    return r.trim();
+  };
+  $('sup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const out = $('sup-out');
+    try {
+      const { data } = await api('GET', '/dashboard_users?email=' + encodeURIComponent($('sup-email').value.trim()));
+      if (!data.length) { out.replaceChildren(el('p', { class: 'empty', text: 'No hay un usuario con ese correo.' })); return; }
+      out.replaceChildren(...data.map((u) => el('div', { class: 'row' }, [
+        el('div', {}, [el('b', { text: u.name + ' · ' + u.business_name }), el('br'), el('code', { text: u.email + ' · ' + u.merchant_id })]),
+        u.mfa_enabled ? pill('Doble factor activo', 'ok') : pill('Sin doble factor', ''),
+        u.mfa_enabled ? el('button', { class: 'btn danger', type: 'button', text: 'Reiniciar doble factor', onclick: async () => {
+          const reason = askReason(u.email);
+          if (!reason) return;
+          try { await api('POST', '/dashboard_users/' + encodeURIComponent(u.id) + '/mfa/reset', { reason }); say('Doble factor reiniciado'); $('sup-form').requestSubmit(); } catch (err) { alert(err.message); }
+        } }) : null,
+      ])));
+    } catch (err) { fail(out, err); }
+  });
 
   // ---- Solicitudes ------------------------------------------------------------
   const contractInput = (label) => el('input', { class: 'sm', style: 'width:150px', maxlength: '120', placeholder: 'CT-2026-…', 'aria-label': label, spellcheck: 'false' });
@@ -564,7 +850,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     try {
       const { data } = await api('GET', '/operators');
       slot.replaceChildren(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, ['Nombre','Rol','Desde','Historial','Estado',''].map((t)=>el('th',{scope:'col',text:t})))]),
+        el('thead', {}, [el('tr', {}, ['Nombre','Rol','Desde','Historial','Estado','Doble factor',''].map((t)=>el('th',{scope:'col',text:t})))]),
         el('tbody', {}, data.map((o) => {
           const role = can('operators:manage') && !o.revoked_at && o.id !== me.id
             ? el('select', { 'aria-label':'Rol de '+o.name }, ROLE_OPTIONS.map(([v,t])=>el('option',{value:v,text:t,selected:o.role===v})))
@@ -581,10 +867,16 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
             if(!confirm('¿Revocar el acceso de '+o.name+'? Su token deja de funcionar al instante.')) return;
             try{await api('POST','/operators/'+encodeURIComponent(o.id)+'/revoke');say(o.name+' revocado');loadOperators();}catch(e){alert(e.message);}
           }}):null;
+          const reset = can('security:manage') && !o.revoked_at && o.id !== me.id && o.mfa_enabled ? el('button', { class: 'btn ghost', type: 'button', text: 'Reiniciar 2FA', 'aria-label': 'Reiniciar el doble factor de ' + o.name, onclick: async () => {
+            const reason = askReason(o.name);
+            if (!reason) return;
+            try { await api('POST', '/operators/' + encodeURIComponent(o.id) + '/mfa/reset', { reason }); say('Doble factor de ' + o.name + ' reiniciado'); loadOperators(); } catch (e) { alert(e.message); }
+          } }) : null;
           return el('tr',{},[
             el('th',{scope:'row'},[o.name,el('br'),el('code',{text:o.id})]),
             el('td',{},[role]),el('td',{text:when(o.created_at)}),el('td',{style:'white-space:pre-line',text:hist||'—'}),
-            el('td',{},[o.revoked_at?pill('Revocado','bad'):pill('Activo','ok')]),el('td',{class:'actions'},[revoke])
+            el('td',{},[o.revoked_at?pill('Revocado','bad'):pill('Activo','ok')]),
+            el('td',{},[o.mfa_enabled?pill('Activo','ok'):pill('Sin activar','warn')]),el('td',{class:'actions'},[reset,revoke])
           ]);
         })),
       ])]));
@@ -597,12 +889,13 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
     try {
       const o = await api('POST', '/operators', { name: $('op-name').value.trim(), role: $('op-role').value });
       out.replaceChildren(el('div', { class: 'banner ok' }, [el('b', { text: 'Token de ' + o.name + ': ' }), el('code', { text: o.token }),
-        el('div', { text: 'Entrégaselo por un canal seguro. No se vuelve a mostrar.' })]));
+        el('div', { text: 'Entrégaselo por un canal seguro. No se vuelve a mostrar. La primera vez que entre, el panel le pedirá activar su app autenticadora.' })]));
       $('op-name').value = '';
       loadOperators();
     } catch (err) { fail(out, err); }
   });
 
-  if (token) { $('token').value = token; start(); }
+  try { $('st-date').value = new Date(Date.now() - 864e5).toISOString().slice(0, 10); } catch (_) { /* sin fecha por defecto */ }
+  if (session) start();
 })();
 </script>

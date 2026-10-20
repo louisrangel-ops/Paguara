@@ -15,11 +15,20 @@ import { Pool } from 'pg';
 import { PG_POOL, withTransaction } from '../database/database';
 import { LedgerService } from '../ledger/ledger.service';
 import { CapabilitiesService, PlatformMerchantPatch } from '../capabilities/capabilities.service';
+import { AlertsService } from '../alerts/alerts.service';
+import { AuthService } from '../dashboard/auth.service';
+import { MfaService } from '../mfa/mfa.service';
+import { ReconciliationService, yesterdayInCaracas } from '../reconciliation/reconciliation.service';
+import { BankMovement, parseDate, parseStatementCsv } from '../reconciliation/statement-parser';
+import { RailCredentialsService } from '../secrets/rail-credentials.service';
+import { principal as operatorPrincipal } from './internal-auth.controller';
 
 /**
  * Quién llama a /internal: `system` es el token compartido de los workers
- * (INTERNAL_API_TOKEN: tasas, resultados de rieles, cortes); una persona entra
- * con su token de operador (`opk_…`) y queda en la auditoría con su nombre.
+ * (INTERNAL_API_TOKEN: tasas, resultados de rieles, cortes, conciliación); una
+ * persona entra con la sesión `ops_…` que recibe al poner su token de operador y
+ * el código de su app autenticadora (POST /internal/auth/session), y queda en la
+ * auditoría con su nombre. El token `opk_…` solo ya no abre nada.
  */
 export type InternalActor = { kind: 'system' } | ({ kind: 'operator' } & Operator);
 type InternalRequest = Request & { internalActor: InternalActor };
@@ -36,8 +45,11 @@ export class InternalTokenGuard implements CanActivate {
       req.internalActor = { kind: 'system' };
       return true;
     }
-    const op = await this.operators.authenticate(got);
-    if (!op) throw new ApiError(401, 'unauthenticated', 'Token interno inválido');
+    if (got.startsWith('opk_')) {
+      throw new ApiError(401, 'operator_session_required', 'Entra por el panel interno con tu token y el código de tu app autenticadora');
+    }
+    const op = await this.operators.authenticateSession(got);
+    if (!op) throw new ApiError(401, 'unauthenticated', 'Token interno inválido o sesión vencida');
     req.internalActor = { kind: 'operator', ...op };
     return true;
   }
@@ -62,6 +74,12 @@ function workerOr(req: InternalRequest, permission: OperatorPermission): Operato
 
 const actorName = (req: InternalRequest) => (req.internalActor.kind === 'operator' ? `platform:${req.internalActor.name}` : 'platform:system');
 
+function requireReason(v: unknown): string {
+  const r = typeof v === 'string' ? v.trim() : '';
+  if (r.length < 10 || r.length > 300) throw new ApiError(400, 'reason_required', 'Escribe el motivo y cómo verificaste la identidad (10 a 300 caracteres)');
+  return r;
+}
+
 function currency(v: string): Currency {
   if (!isCurrency(v)) throw new ApiError(400, 'currency_invalid', `Moneda no soportada: ${v}`);
   return v;
@@ -79,6 +97,11 @@ export class InternalController {
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly capabilities: CapabilitiesService,
     private readonly operators: OperatorsService,
+    private readonly mfa: MfaService,
+    private readonly auth: AuthService,
+    private readonly credentials: RailCredentialsService,
+    private readonly reconciliation: ReconciliationService,
+    private readonly alerts: AlertsService,
   ) {}
 
   /** Quién soy (el panel interno lo usa al entrar). */
@@ -110,6 +133,142 @@ export class InternalController {
   @HttpCode(200)
   revokeOperator(@Req() req: InternalRequest, @Param('id') id: string) {
     return this.operators.revoke(id, permitted(req, 'operators:manage'));
+  }
+
+  /**
+   * Una persona perdió el teléfono y sus códigos de respaldo: un maestro (otro, no
+   * ella misma) le quita el doble factor y le cierra las sesiones. En su próxima
+   * entrada vuelve a inscribirlo. Queda en la auditoría con el motivo.
+   */
+  @Post('operators/:id/mfa/reset')
+  @HttpCode(200)
+  async resetOperatorMfa(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { reason?: string }) {
+    const by = permitted(req, 'security:manage');
+    if (id === by.id) throw new ApiError(409, 'cannot_reset_self', 'Otro maestro debe reiniciar tu doble factor');
+    const reason = requireReason(b.reason);
+    const op = await this.operators.get(id);
+    await this.mfa.remove(operatorPrincipal(op), `platform:${by.name}`, 'reset', reason);
+    await this.operators.endAllSessions(id);
+    return { id, mfa_enabled: false };
+  }
+
+  /** Buscar a un usuario de un comercio por correo (para soporte: reinicio de doble factor). */
+  @Get('dashboard_users')
+  async findUser(@Req() req: InternalRequest, @Query('email') email: string) {
+    permitted(req, 'security:manage');
+    const { rows } = await this.pool.query(
+      `SELECT u.id, u.email, u.name, u.role, u.merchant_id, m.business_name, (f.confirmed_at IS NOT NULL) AS mfa_enabled
+         FROM dashboard.users u JOIN merchants.merchants m ON m.id = u.merchant_id
+         LEFT JOIN security.mfa_factors f ON f.principal_type = 'user' AND f.principal_id = u.id
+        WHERE u.email = $1`, [(email ?? '').trim().toLowerCase()]);
+    return { object: 'list', data: rows };
+  }
+
+  /** Reinicio de doble factor de un usuario del comercio que lo perdió, después de verificar su identidad. */
+  @Post('dashboard_users/:id/mfa/reset')
+  @HttpCode(200)
+  async resetUserMfa(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { reason?: string }) {
+    const by = permitted(req, 'security:manage');
+    const reason = requireReason(b.reason);
+    await this.mfa.remove({ type: 'user', id, label: '' }, `platform:${by.name}`, 'reset', reason);
+    await this.auth.revokeAllSessions(id);
+    return { id, mfa_enabled: false };
+  }
+
+  // ---- Secretos de los bancos (KMS) ----
+  @Get('rail_credentials')
+  async listCredentials(@Req() req: InternalRequest) {
+    permitted(req, 'secrets:read');
+    return { object: 'list', data: await this.credentials.list() };
+  }
+
+  /** Carga o reemplaza (versión nueva) una llave, clave o certificado de un banco. El valor no se vuelve a mostrar. */
+  @Post('rail_credentials')
+  putCredential(@Req() req: InternalRequest, @Body() b: { rail?: string; name?: string; kind?: string; value?: string }) {
+    permitted(req, 'secrets:manage');
+    return this.credentials.put(b, actorName(req));
+  }
+
+  @Post('rail_credentials/:rail/:name/retire')
+  @HttpCode(200)
+  retireCredential(@Req() req: InternalRequest, @Param('rail') rail: string, @Param('name') name: string) {
+    permitted(req, 'secrets:manage');
+    return this.credentials.retire(rail, name, actorName(req));
+  }
+
+  // ---- Conciliación y alertas ----
+  /**
+   * Extracto del banco: `csv` (fecha;referencia;monto;descripcion) o `movements`
+   * ya en unidades mínimas. Lo sube el proceso que baja el archivo del banco o una persona.
+   */
+  @Post('reconciliation/statements')
+  importStatement(@Req() req: InternalRequest, @Body() b: { rail?: string; currency?: string; statement_date?: string; csv?: string;
+    movements?: Array<{ value_date?: string; amount?: string; reference?: string; description?: string }> }) {
+    workerOr(req, 'reconciliation:run');
+    const cur = currency(String(b.currency ?? ''));
+    let movements: BankMovement[];
+    try {
+      movements = typeof b.csv === 'string' ? parseStatementCsv(b.csv, cur) : (b.movements ?? []).map((m) => {
+        if (!/^-?\d{1,20}$/.test(m.amount ?? '') || m.amount === '0') throw new Error('amount debe ser un entero distinto de 0 en unidades mínimas');
+        if (!m.reference) throw new Error('falta reference');
+        return { valueDate: parseDate(m.value_date ?? ''), amount: BigInt(m.amount!), reference: String(m.reference).slice(0, 80), description: m.description?.slice(0, 300) };
+      });
+    } catch (e) {
+      throw new ApiError(400, 'statement_invalid', (e as Error).message);
+    }
+    return this.reconciliation.importStatement({ rail: b.rail, currency: cur, statementDate: b.statement_date, source: 'file', movements }, actorName(req));
+  }
+
+  @Post('reconciliation/runs')
+  runReconciliation(@Req() req: InternalRequest, @Body() b: { rail?: string; currency?: string; date?: string }) {
+    workerOr(req, 'reconciliation:run');
+    return this.reconciliation.run({ rail: b.rail, currency: b.currency, date: b.date }, actorName(req));
+  }
+
+  /** El job diario (cron de la mañana): todos los rieles, por defecto el día anterior en Caracas. */
+  @Post('reconciliation/daily')
+  @HttpCode(200)
+  daily(@Req() req: InternalRequest, @Body() b: { date?: string }) {
+    workerOr(req, 'reconciliation:run');
+    return this.reconciliation.runDaily(b.date ?? yesterdayInCaracas(), actorName(req));
+  }
+
+  @Get('reconciliation/runs')
+  async runs(@Req() req: InternalRequest, @Query('limit') limit?: string) {
+    permitted(req, 'reconciliation:read');
+    return { object: 'list', data: await this.reconciliation.listRuns(Number(limit ?? 50) || 50) };
+  }
+
+  @Get('reconciliation/runs/:id')
+  run(@Req() req: InternalRequest, @Param('id') id: string) {
+    permitted(req, 'reconciliation:read');
+    return this.reconciliation.getRun(id);
+  }
+
+  @Get('reconciliation/discrepancies')
+  async discrepancies(@Req() req: InternalRequest) {
+    permitted(req, 'reconciliation:read');
+    return { object: 'list', data: await this.reconciliation.openDiscrepancies() };
+  }
+
+  @Post('reconciliation/discrepancies/:id/resolve')
+  @HttpCode(200)
+  resolveDiscrepancy(@Req() req: InternalRequest, @Param('id') id: string, @Body() b: { resolution?: string }) {
+    permitted(req, 'reconciliation:run');
+    return this.reconciliation.resolve(id, actorName(req), b.resolution);
+  }
+
+  @Get('alerts')
+  async listAlerts(@Req() req: InternalRequest) {
+    permitted(req, 'alerts:read');
+    return { object: 'list', data: await this.alerts.open() };
+  }
+
+  @Post('alerts/:id/acknowledge')
+  @HttpCode(200)
+  ackAlert(@Req() req: InternalRequest, @Param('id') id: string) {
+    permitted(req, 'alerts:ack');
+    return this.alerts.acknowledge(id, actorName(req));
   }
 
   /** Liquidaciones esperando aprobación. */

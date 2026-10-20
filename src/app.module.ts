@@ -24,6 +24,13 @@ import { HealthController } from './health.controller';
 import { OperatorsService } from './settlements/operators.service';
 import { SecurityTxtController } from './legal/security-txt.controller';
 import { WebhooksService } from './webhooks/webhooks.service';
+import { MfaService } from './mfa/mfa.service';
+import { InternalAuthController } from './settlements/internal-auth.controller';
+import { RailCredentialsService } from './secrets/rail-credentials.service';
+import { AlertsService } from './alerts/alerts.service';
+import { ReconciliationService, STATEMENT_SOURCES, reconcilablePairs } from './reconciliation/reconciliation.service';
+import { SandboxStatementSource } from './reconciliation/sandbox-statement.source';
+import { Pool } from 'pg';
 
 /**
  * Rieles por método. Aún no hay conectores con bancos reales: todos son el
@@ -42,12 +49,15 @@ export function buildRails(livemode: boolean): Map<string, RailAdapter> {
 }
 
 @Module({
-  controllers: [PaymentIntentsController, CheckoutController, AccountCapabilitiesController, CheckoutPageController, AdminPageController, InternalController,
+  controllers: [PaymentIntentsController, CheckoutController, AccountCapabilitiesController, CheckoutPageController, AdminPageController, InternalAuthController, InternalController,
     DashboardAuthController, DashboardController, PublicController, SitePageController, HealthController, SecurityTxtController],
   providers: [
     { provide: PG_POOL, useFactory: () => createPool() },
     { provide: REDIS, useFactory: () => new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379') },
     { provide: RAIL_ADAPTERS, useFactory: () => buildRails(INSTANCE_LIVEMODE) },
+    // Extractos automáticos: en sandbox, el banco simulado; en producción, el conector de cada banco cuando exista
+    { provide: STATEMENT_SOURCES, inject: [PG_POOL], useFactory: (pool: Pool) =>
+      INSTANCE_LIVEMODE ? [] : [...new Set(reconcilablePairs().map((p) => p.rail))].map((rail) => new SandboxStatementSource(rail, pool)) },
     LedgerService,
     OperatorsService,
     MerchantsService,
@@ -64,6 +74,10 @@ export function buildRails(livemode: boolean): Map<string, RailAdapter> {
     DashboardService,
     WebhooksService,
     CapabilitiesService,
+    MfaService,
+    RailCredentialsService,
+    AlertsService,
+    ReconciliationService,
   ],
   exports: [PG_POOL, LedgerService, FxService, PaymentIntentsService, SettlementsService],
 })

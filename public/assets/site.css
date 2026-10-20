@@ -680,3 +680,13 @@ dialog .dlg > h2 { padding-right: 44px; }
 .switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .switch:disabled { cursor: not-allowed; opacity: .55; }
 @media (prefers-reduced-motion: reduce) { .switch, .switch .knob { transition: none; } }
+
+/* Doble factor (Ajustes → Doble factor y login) */
+#seguridad .row-actions { justify-content: flex-start; }
+.mfa-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+.mfa-steps code { font-family: var(--font-figure); background: var(--surface-2); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+/* El QR va siempre sobre blanco: los lectores no leen bien un QR invertido en modo oscuro */
+.mfa-qr { justify-self: start; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; min-width: 192px; min-height: 192px; }
+.mfa-codes-box { display: grid; gap: 10px; }
+.mfa-codes { margin: 0; padding: 14px 18px; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px 16px; background: var(--surface-2); border: 1px dashed var(--field-line); border-radius: 10px; font-family: var(--font-figure); font-size: 15px; }
+.mfa-codes-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

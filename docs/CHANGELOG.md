@@ -9,6 +9,17 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Esquema] Migración 014: esquemas `security` (factores 2FA, códigos de respaldo, auditoría append-only) y `reconciliation` (extractos, movimientos, corridas, cruces append-only, diferencias); `platform.operator_sessions`, `platform.rail_credentials` (solo `env:v1:`) y `platform.alerts`.
+- [Seguridad] Doble factor TOTP con códigos de respaldo: obligatorio para operadores de `/admin` (sesión `ops_` tras token y código), opcional en el panel del comercio, con reinicio por otro maestro y motivo auditado. Ver [doble-factor.md](doble-factor.md).
+- [Seguridad] Gestor de secretos: cifrado por sobre con proveedor intercambiable (AWS KMS en producción, llave local en desarrollo), `npm run secrets:rewrap` para rotar, secretos de los bancos versionados en `platform.rail_credentials`. Ver [gestor-de-secretos.md](gestor-de-secretos.md).
+- [Liquidaciones] Conciliación diaria banco ↔ ledger: importa extractos (CSV o JSON), cruza por referencia y monto, libera los fondos cruzados y registra diferencias; alertas a `ALERT_WEBHOOK_URL`. Un extracto corregido del mismo día reemplaza al anterior; una alerta que sube a crítica se reenvía. Ver [conciliacion.md](conciliacion.md).
+- [API] `/internal/auth/*`, `/internal/operators/:id/mfa/reset`, `/internal/dashboard_users`, `/internal/rail_credentials`, `/internal/reconciliation/*`, `/internal/alerts`; un `opk_` solo recibe 401 `operator_session_required`; permisos RBAC nuevos `security:manage`, `secrets:read`/`secrets:manage`, `reconciliation:read`/`reconciliation:run`, `alerts:read`/`alerts:ack`.
+- [Dashboard] `POST /api/dashboard/login/mfa`, `GET /api/dashboard/security`, `/api/dashboard/mfa/*`; `PUT settlement_rules` pide `mfa_code` con el factor activo.
+- [Web] Ajustes → Doble factor y login en dos pasos en el panel; en `/admin` entrada con código, inscripción con QR, alertas, conciliación, secretos de los bancos y reinicio de 2FA.
+- [Config] `KMS_PROVIDER`, `KMS_KEY_ID`, `AWS_REGION`, `SECRETS_ENCRYPTION_PREVIOUS_KEYS`, `OPERATOR_SESSION_HOURS`, `ALERT_WEBHOOK_URL`, `RECON_LOOKBACK_DAYS`, `RECON_GRACE_DAYS`, `RECON_EVERY_SECONDS`; con `LIVEMODE=true` se exige `KMS_PROVIDER=aws`.
+- [Despliegue] `npm run reconcile` (cron diario) y `npm run secrets:rewrap`; `dev-jobs` concilia contra el banco simulado.
+- [Docs] `doble-factor.md`, `gestor-de-secretos.md` y `conciliacion.md`; seguridad, API, dashboard, configuración, despliegue, modelo de datos y liquidaciones actualizados.
+
 - [Esquema] Migración 013: roles internos funcionales y `platform.operator_role_changes` append-only.
 - [Seguridad] RBAC del panel interno con permisos por endpoint y protección contra revocar/demover al último master.
 - [API] Directorio de comercios, detalle KYC/ISO 8583, cambio de rol de operadores y `whoami.permissions`.

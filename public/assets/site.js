@@ -409,6 +409,60 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Doble factor: pedir un código y mostrar el QR o los códigos de respaldo
+  // ---------------------------------------------------------------------------
+  function codeInput(id) {
+    return el('input', { id, name: 'code', inputmode: 'numeric', autocomplete: 'one-time-code', spellcheck: 'false', autocapitalize: 'off', maxlength: '11', required: true, placeholder: '123456', translate: 'no' });
+  }
+  const CODE_OK = (v) => (/^\d{6}$/.test(v.trim()) || /^[a-z0-9]{5}-?[a-z0-9]{5}$/i.test(v.trim()) ? null : 'Escribe los 6 dígitos de tu app o un código de respaldo.');
+  // Pide el código de la app en un diálogo y llama action(código); el error se ve dentro del diálogo
+  function mfaDialog(o) {
+    openDialog({
+      title: o.title,
+      body: (dlg) => {
+        const input = codeInput('mfa-dlg-code');
+        const extra = o.password ? pwField('mfa-dlg-pass', 'Tu contraseña', 'current-password') : null;
+        const err = el('div');
+        const go = el('button', { class: 'btn ' + (o.danger ? 'danger' : ''), type: 'submit', text: o.label });
+        const form = el('form', { class: 'form', novalidate: true }, [
+          o.text ? el('p', { text: o.text }) : null, extra,
+          field({ id: 'mfa-dlg-code', label: 'Código de tu app autenticadora', input, hint: 'Los 6 dígitos que muestra ahora, o uno de tus códigos de respaldo.' }),
+          err, el('div', { class: 'dlg-actions' }, [el('button', { class: 'btn quiet', type: 'button', text: 'Volver', onclick: () => dlg.close() }), go]),
+        ].filter(Boolean));
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          err.replaceChildren();
+          const checks = [[input, CODE_OK]];
+          if (extra) checks.unshift([extra.querySelector('input'), (v) => (v ? null : 'Escribe tu contraseña.')]);
+          if (!validate(checks)) return;
+          setBusy(go, true, 'Verificando…');
+          try { const r = await o.action(input.value.trim(), extra && extra.querySelector('input').value); dlg.close(); if (o.done) o.done(r); }
+          catch (ex) { setBusy(go, false); err.replaceChildren(errorBanner(ex, 'No pudimos verificar el código')); }
+        });
+        return [form];
+      },
+    });
+  }
+  function recoveryCodesBox(codes) {
+    const text = codes.join('\n');
+    const list = el('ul', { class: 'mfa-codes', translate: 'no' }, codes.map((c) => el('li', { text: c })));
+    return el('div', { class: 'mfa-codes-box' }, [list, el('div', { class: 'mfa-codes-actions' }, [
+      copyButton(text, 'códigos de respaldo', list),
+      el('a', { class: 'btn quiet sm', download: 'paguara-codigos-de-respaldo.txt', href: 'data:text/plain;charset=utf-8,' + encodeURIComponent('Paguara · códigos de respaldo\nCada uno sirve una sola vez.\n\n' + text + '\n'), text: 'Descargar' }),
+    ])]);
+  }
+  // qrcodejs se carga solo cuando hace falta (la misma copia que usa el checkout)
+  function loadQr() {
+    if (window.QRCode) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const sc = el('script', { src: 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js' });
+      sc.onload = () => resolve(!!window.QRCode);
+      sc.onerror = () => resolve(false);
+      document.head.append(sc);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Cliente de la API: misma interfaz en el servidor y en modo demostración
   // ---------------------------------------------------------------------------
   function qs(params) {
@@ -1036,6 +1090,7 @@
         const s = signup
           ? await api.post('/signup', { name: vals[0].trim(), email: vals[1].trim(), business_name: vals[2].trim(), rif: normRif(vals[3]), password: vals[4], accept_terms: true })
           : await api.post('/login', { email: vals[0].trim(), password: vals[1] });
+        if (s.mfa_required) { mfaStep(s.mfa_token); return; }
         state.session = s;
         const next = r.query.next && (r.query.next.startsWith('/dashboard') || r.query.next.startsWith('/docs')) ? r.query.next : '/dashboard';
         go('#' + next);
@@ -1046,6 +1101,38 @@
         err.querySelector('[role=alert]').scrollIntoView({ block: 'center' });
       }
     });
+    // Contraseña correcta y doble factor activo: falta el código de la app
+    function mfaStep(mfaToken) {
+      const input = codeInput('li-code');
+      const err2 = el('div');
+      const btn2 = el('button', { class: 'btn lg block', type: 'submit', text: 'Verificar y entrar' });
+      const f2 = el('form', { class: 'form', novalidate: true }, [
+        field({ id: 'li-code', label: 'Código de tu app autenticadora', input, hint: 'Los 6 dígitos que muestra ahora. Si no tienes el teléfono, usa uno de tus códigos de respaldo.' }),
+        err2, btn2,
+      ]);
+      f2.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err2.replaceChildren();
+        if (!validate([[input, CODE_OK]])) return;
+        setBusy(btn2, true, 'Verificando…');
+        try {
+          const s = await api.post('/login/mfa', { mfa_token: mfaToken, code: input.value.trim() });
+          state.session = s;
+          if (s.used_recovery_code) toast('Usaste un código de respaldo: ya no sirve. Genera códigos nuevos en Ajustes si te quedan pocos.');
+          const next = r.query.next && r.query.next.startsWith('/dashboard') ? r.query.next : '/dashboard';
+          go('#' + next);
+        } catch (ex) {
+          setBusy(btn2, false);
+          if (ex.code === 'mfa_challenge_expired') { authPage(app, kind, r); return; }
+          err2.replaceChildren(errorBanner(ex, ex.code === 'too_many_attempts' ? 'Demasiados intentos' : 'No pudimos verificar el código'));
+        }
+      });
+      const h1 = card.querySelector('h1');
+      h1.textContent = 'Verifica que eres tú';
+      card.querySelector('.sub').textContent = 'Tu cuenta tiene doble factor. Abre tu app autenticadora y escribe el código de Paguara.';
+      form.replaceWith(f2);
+      input.focus();
+    }
     const card = el('div', { class: 'auth-card' }, [
       el('div', {}, [
         el('h1', { tabindex: '-1', text: signup ? 'Crea tu cuenta' : 'Entra a tu panel' }),
@@ -1578,13 +1665,21 @@
         if (!ok) return;
         const body = { rules: [{ target_currency: 'VES', bps: 10000, destination: { type: 'bank_ves', bank: bank.value, account: acct.value.replace(/[\s-]/g, ''), holder: holder.value.trim() } }] };
         setBusy(save, true, 'Guardando…');
-        try {
-          const res = await api.put('/settlement_rules/' + src, body);
+        const saved = (res) => {
           if (!alive(tok)) return;
           Object.assign(allRules, res.rules);
           draw();
           toast('Cuenta para cobros en ' + SYMBOL[src] + ' guardada');
-        } catch (ex) { setBusy(save, false); err.replaceChildren(errorBanner(ex, 'No pudimos guardar la cuenta')); }
+        };
+        try {
+          saved(await api.put('/settlement_rules/' + src, body));
+        } catch (ex) {
+          setBusy(save, false);
+          if (ex.code === 'mfa_required') {
+            mfaDialog({ title: 'Confirma el cambio de cuenta', label: 'Guardar la cuenta', text: 'Para cambiar la cuenta donde recibes tu dinero escribe el código de tu app autenticadora.',
+              action: (code) => api.put('/settlement_rules/' + src, Object.assign({}, body, { mfa_code: code })), done: saved });
+          } else err.replaceChildren(errorBanner(ex, 'No pudimos guardar la cuenta'));
+        }
       });
       formSlot.replaceChildren(form);
     }
@@ -2069,12 +2164,90 @@
     });
     const kyc = el('section', { class: 'card', id: 'activar', 'aria-labelledby': 'kyc-h' });
     drawKyc(kyc, tok);
+    const sec = el('section', { class: 'card', id: 'seguridad', 'aria-labelledby': 'sec-h' });
+    drawSecurity(sec, tok);
     main.replaceChildren(
-      pageHead('Ajustes', 'Datos de tu negocio y activación de la cuenta.'),
+      pageHead('Ajustes', 'Datos de tu negocio, seguridad de tu acceso y activación de la cuenta.'),
       el('section', { class: 'card', 'aria-labelledby': 'pf-h' }, [el('h2', { id: 'pf-h', text: 'Perfil del negocio' }), pform]),
+      sec,
       kyc,
     );
   };
+  // Doble factor (opcional): app autenticadora + 10 códigos de respaldo
+  async function drawSecurity(card, tok) {
+    const head = (on) => el('div', { class: 'card-head' }, [el('h2', { id: 'sec-h', text: 'Doble factor' }), on ? pill('Activo', 'ok') : pill('Desactivado', '')]);
+    const focusHead = () => { const h = card.querySelector('h2'); h.setAttribute('tabindex', '-1'); h.focus(); };
+    if (!state.session.user.mfa_enabled) {
+      const start = el('button', { class: 'btn', type: 'button', text: 'Activar doble factor' });
+      const err = el('div');
+      start.addEventListener('click', async () => {
+        err.replaceChildren();
+        setBusy(start, true, 'Preparando…');
+        try { enrollStep(await api.post('/mfa/setup')); }
+        catch (ex) { setBusy(start, false); err.replaceChildren(errorBanner(ex, 'No pudimos empezar')); }
+      });
+      card.replaceChildren(head(false),
+        el('p', { text: 'Además de tu contraseña, al entrar te pediremos un código de 6 dígitos de una app autenticadora (Google Authenticator, Microsoft Authenticator, 1Password o Authy). Si alguien consigue tu contraseña, no puede entrar ni cambiar la cuenta donde recibes tu dinero.' }),
+        err, el('div', {}, [start]));
+      return;
+    }
+    let st = null;
+    try { st = await api.get('/security'); } catch (_) { /* se muestra sin el conteo */ }
+    if (!alive(tok)) return;
+    const regen = el('button', { class: 'btn quiet', type: 'button', text: 'Generar códigos de respaldo nuevos', onclick: () => mfaDialog({
+      title: 'Códigos de respaldo nuevos', label: 'Generar', text: 'Los códigos anteriores dejan de servir.',
+      action: (code) => api.post('/mfa/recovery_codes', { code }),
+      done: (res) => openDialog({ title: 'Guarda tus códigos de respaldo', body: (d) => [
+        el('p', { text: 'Cada uno sirve una sola vez si pierdes el teléfono. No se vuelven a mostrar.' }), recoveryCodesBox(res.recovery_codes),
+        el('div', { class: 'dlg-actions' }, [el('button', { class: 'btn', type: 'button', text: 'Ya los guardé', onclick: () => d.close() })])] }),
+    }) });
+    const off = el('button', { class: 'btn danger', type: 'button', text: 'Quitar doble factor', onclick: () => mfaDialog({
+      title: 'Quitar el doble factor', label: 'Quitar', danger: true, password: true,
+      text: 'Tu cuenta quedará protegida solo con la contraseña.',
+      action: (code, password) => api.post('/mfa/disable', { code, password }),
+      done: () => { state.session.user.mfa_enabled = false; toast('Doble factor desactivado'); drawSecurity(card, tok); focusHead(); },
+    }) });
+    card.replaceChildren(head(true),
+      el('p', { text: 'Al entrar y al cambiar la cuenta donde recibes tu dinero te pedimos el código de tu app.' + (st ? ' Te quedan ' + st.recovery_codes_left + ' códigos de respaldo.' : '') }),
+      st && st.recovery_codes_left <= 3 ? el('p', { class: 'banner warn', text: 'Te quedan pocos códigos de respaldo: genera unos nuevos.' }) : null,
+      el('div', { class: 'row-actions' }, [regen, off]));
+
+    function enrollStep(setup) {
+      const qr = el('div', { class: 'mfa-qr', role: 'img', 'aria-label': 'Código QR para tu app autenticadora' });
+      const key = el('code', { translate: 'no', text: setup.secret.replace(/(.{4})/g, '$1 ').trim() });
+      const input = codeInput('sec-code');
+      const err = el('div');
+      const go = el('button', { class: 'btn', type: 'submit', text: 'Activar' });
+      const form = el('form', { class: 'form', novalidate: true }, [
+        field({ id: 'sec-code', label: 'Código de 6 dígitos que muestra la app', input }), err, el('div', {}, [go])]);
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.replaceChildren();
+        if (!validate([[input, (v) => (/^\d{6}$/.test(v.trim()) ? null : 'Escribe los 6 dígitos que muestra tu app.')]])) return;
+        setBusy(go, true, 'Activando…');
+        try {
+          const res = await api.post('/mfa/confirm', { code: input.value.trim() });
+          state.session.user.mfa_enabled = true;
+          if (!alive(tok)) return;
+          card.replaceChildren(head(true),
+            el('p', { text: 'Listo: tu cuenta tiene doble factor. Guarda estos códigos de respaldo; cada uno sirve una sola vez si pierdes el teléfono y no se vuelven a mostrar.' }),
+            recoveryCodesBox(res.recovery_codes),
+            el('div', {}, [el('button', { class: 'btn', type: 'button', text: 'Ya los guardé', onclick: () => { drawSecurity(card, tok); focusHead(); } })]));
+          focusHead();
+          toast('Doble factor activado');
+        } catch (ex) { setBusy(go, false); err.replaceChildren(errorBanner(ex, 'No pudimos activarlo')); }
+      });
+      card.replaceChildren(head(false),
+        el('ol', { class: 'mfa-steps' }, [
+          el('li', { text: 'Abre tu app autenticadora y agrega una cuenta nueva.' }),
+          el('li', {}, ['Escanea este código. Si no puedes, escribe la clave ', key, '.']),
+          el('li', { text: 'Escribe el código de 6 dígitos que te muestra.' }),
+        ]),
+        qr, form);
+      loadQr().then((ok) => { if (ok) new window.QRCode(qr, { text: setup.otpauth_url, width: 168, height: 168 }); else qr.hidden = true; });
+      input.focus();
+    }
+  }
   function drawKyc(card, tok) {
     const m = state.session.merchant;
     const k = kycInfo(m);

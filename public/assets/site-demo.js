@@ -323,7 +323,7 @@
     };
   }
   function session() {
-    return { user: Object.assign({}, user), merchant: Object.assign({}, merchant), livemode: false, other_mode_url: null, event_types: EVENT_TYPES.slice() };
+    return { user: Object.assign({ mfa_enabled: false }, user), merchant: Object.assign({}, merchant), livemode: false, other_mode_url: null, event_types: EVENT_TYPES.slice() };
   }
 
   // ---------------------------------------------------------------------------
@@ -353,6 +353,27 @@
       return session();
     }],
     ['POST', /^\/logout$/, () => { loggedIn = false; return { ok: true }; }],
+    // Doble factor simulado: cualquier código de 6 dígitos sirve
+    ['GET', /^\/security$/, () => { need(); return { enabled: !!user.mfa_enabled, enabled_at: user.mfa_enabled_at || null, recovery_codes_left: user.mfa_enabled ? 10 : 0 }; }],
+    ['POST', /^\/mfa\/setup$/, () => {
+      need();
+      if (user.mfa_enabled) fail(409, 'mfa_already_enabled', 'El doble factor ya está activo.');
+      return { secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', otpauth_url: 'otpauth://totp/Paguara:' + encodeURIComponent(user.email) + '?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Paguara&algorithm=SHA1&digits=6&period=30' };
+    }],
+    ['POST', /^\/mfa\/confirm$/, (m, b) => {
+      need();
+      if (!/^\d{6}$/.test(b.code || '')) fail(401, 'mfa_code_invalid', 'El código no es válido o ya se usó.');
+      user.mfa_enabled = true; user.mfa_enabled_at = new Date().toISOString();
+      return { recovery_codes: demoCodes() };
+    }],
+    ['POST', /^\/mfa\/recovery_codes$/, (m, b) => { need(); if (!/^\d{6}$/.test(b.code || '')) fail(401, 'mfa_code_invalid', 'El código no es válido o ya se usó.'); return { recovery_codes: demoCodes() }; }],
+    ['POST', /^\/mfa\/disable$/, (m, b) => {
+      need();
+      if (!b.password) fail(401, 'invalid_credentials', 'La contraseña no es correcta');
+      if (!/^\d{6}$/.test(b.code || '')) fail(401, 'mfa_code_invalid', 'El código no es válido o ya se usó.');
+      user.mfa_enabled = false; user.mfa_enabled_at = null;
+      return { enabled: false, enabled_at: null, recovery_codes_left: 0 };
+    }],
     ['GET', /^\/me$/, () => { need(); return session(); }],
     ['PUT', /^\/account$/, (m, b) => {
       need();
@@ -513,6 +534,10 @@
   function pubEndpoint(e) { const o = Object.assign({}, e); delete o._secret; return JSON.parse(JSON.stringify(o)); }
   function pubEvent(e) { const o = Object.assign({}, e); delete o._payload; return JSON.parse(JSON.stringify(o)); }
 
+  function demoCodes() {
+    const a = 'abcdefghjkmnpqrstuvwxyz23456789';
+    return Array.from({ length: 10 }, () => Array.from({ length: 10 }, (_, i) => a[Math.floor(Math.random() * a.length)] + (i === 4 ? '-' : '')).join(''));
+  }
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   async function request(method, path, body, params) {
     await wait(180 + Math.floor(Math.random() * 220));

@@ -12,9 +12,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate:dist": "node dist/scripts/migrate.js",
     "dev:jobs": "tsx scripts/dev-jobs.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "reconcile": "tsx scripts/reconcile.ts",
+    "secrets:rewrap": "tsx scripts/rewrap-secrets.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1153.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",

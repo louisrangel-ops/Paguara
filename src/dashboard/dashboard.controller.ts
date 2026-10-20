@@ -16,24 +16,26 @@ import { allowedFor, assertModuleActive, methodSettings, parseMethodList } from 
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database';
 import { DashboardService } from './dashboard.service';
+import { MfaPrincipal, MfaService } from '../mfa/mfa.service';
 
 /** URL pública del sitio (links de pago, checkout). Sin configurar, la del propio pedido. */
 export function baseUrl(req: Request): string {
   return (process.env.PUBLIC_BASE_URL ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 }
 
+const principal = (req: DashboardRequest): MfaPrincipal => ({ type: 'user', id: req.session.userId, label: req.session.email });
+
 const clientIp = (req: Request) => req.ip ?? req.socket.remoteAddress ?? 'unknown';
 
 @Controller('api/dashboard')
 export class DashboardAuthController {
-  constructor(private readonly auth: AuthService, private readonly merchants: MerchantsService) {}
+  constructor(private readonly auth: AuthService, private readonly merchants: MerchantsService, private readonly mfa: MfaService) {}
 
   @Post('signup')
   async signup(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: Record<string, unknown>) {
     assertSameOriginWrite(req);
     const { userId } = await this.auth.signup(b as Parameters<AuthService['signup']>[0], { ip: clientIp(req), userAgent: req.header('user-agent') });
-    const s = await this.auth.resolve(await this.auth.startSession(userId, res));
-    return sessionView(s!, await this.merchants.get(s!.merchantId));
+    return this.openSession(userId, res);
   }
 
   @Post('login')
@@ -41,8 +43,29 @@ export class DashboardAuthController {
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: { email?: string; password?: string }) {
     assertSameOriginWrite(req);
     const userId = await this.auth.login(b.email ?? '', b.password ?? '', clientIp(req));
+    // Con doble factor, la contraseña sola no abre sesión: falta el código de la app
+    if (await this.mfa.isEnabled({ type: 'user', id: userId, label: '' })) {
+      return { mfa_required: true, mfa_token: await this.auth.createMfaChallenge(userId) };
+    }
+    return this.openSession(userId, res);
+  }
+
+  /** Segundo paso del login: el token de /login más el código de la app (o un código de respaldo). */
+  @Post('login/mfa')
+  @HttpCode(200)
+  async loginMfa(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() b: { mfa_token?: string; code?: string }) {
+    assertSameOriginWrite(req);
+    const userId = await this.auth.mfaChallengeUser(b.mfa_token ?? '');
+    if (!userId) throw new ApiError(401, 'mfa_challenge_expired', 'Pasaron más de 5 minutos. Vuelve a escribir tu correo y contraseña.');
+    const method = await this.mfa.verify({ type: 'user', id: userId, label: '' }, b.code ?? '', `user:${userId}`);
+    await this.auth.consumeMfaChallenge(b.mfa_token!);
+    const view = await this.openSession(userId, res);
+    return method === 'recovery_code' ? { ...view, used_recovery_code: true } : view;
+  }
+
+  private async openSession(userId: string, res: Response) {
     const s = await this.auth.resolve(await this.auth.startSession(userId, res));
-    return sessionView(s!, await this.merchants.get(s!.merchantId));
+    return sessionView(s!, await this.merchants.get(s!.merchantId), await this.mfa.isEnabled({ type: 'user', id: userId, label: '' }));
   }
 
   @Post('logout')
@@ -54,9 +77,9 @@ export class DashboardAuthController {
   }
 }
 
-function sessionView(s: { userId: string; name: string; email: string; role: string }, merchant: unknown) {
+function sessionView(s: { userId: string; name: string; email: string; role: string }, merchant: unknown, mfaEnabled = false) {
   return {
-    user: { id: s.userId, name: s.name, email: s.email, role: s.role },
+    user: { id: s.userId, name: s.name, email: s.email, role: s.role, mfa_enabled: mfaEnabled },
     merchant,
     livemode: INSTANCE_LIVEMODE,
     other_mode_url: process.env.OTHER_MODE_DASHBOARD_URL ?? null,
@@ -74,11 +97,50 @@ export class DashboardController {
     private readonly webhooks: WebhooksService,
     private readonly capabilities: CapabilitiesService,
     @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly mfa: MfaService,
+    private readonly auth: AuthService,
   ) {}
 
   @Get('me')
   async me(@Req() req: DashboardRequest) {
-    return sessionView(req.session, await this.merchants.get(req.session.merchantId));
+    return sessionView(req.session, await this.merchants.get(req.session.merchantId), await this.mfa.isEnabled(principal(req)));
+  }
+
+  // ---- Doble factor (opcional para el comercio) ----
+  @Get('security')
+  security(@Req() req: DashboardRequest) {
+    return this.mfa.status(principal(req));
+  }
+
+  /** Paso 1: semilla y enlace otpauth:// para el QR. */
+  @Post('mfa/setup')
+  @HttpCode(200)
+  mfaSetup(@Req() req: DashboardRequest) {
+    return this.mfa.beginEnrollment(principal(req));
+  }
+
+  /** Paso 2: el primer código lo activa; los códigos de respaldo se muestran solo aquí. */
+  @Post('mfa/confirm')
+  @HttpCode(200)
+  mfaConfirm(@Req() req: DashboardRequest, @Body() b: { code?: string }) {
+    return this.mfa.confirmEnrollment(principal(req), b.code ?? '', `user:${req.session.userId}`);
+  }
+
+  /** Quitarlo pide la contraseña y un código vigente: una sesión robada no basta. */
+  @Post('mfa/disable')
+  @HttpCode(200)
+  async mfaDisable(@Req() req: DashboardRequest, @Body() b: { password?: string; code?: string }) {
+    if (!(await this.auth.checkPassword(req.session.userId, b.password ?? ''))) throw new ApiError(401, 'invalid_credentials', 'La contraseña no es correcta');
+    await this.mfa.verify(principal(req), b.code ?? '', `user:${req.session.userId}`);
+    await this.mfa.remove(principal(req), `user:${req.session.userId}`, 'disabled');
+    return this.mfa.status(principal(req));
+  }
+
+  @Post('mfa/recovery_codes')
+  @HttpCode(200)
+  async mfaRecoveryCodes(@Req() req: DashboardRequest, @Body() b: { code?: string }) {
+    await this.mfa.verify(principal(req), b.code ?? '', `user:${req.session.userId}`);
+    return this.mfa.regenerateRecoveryCodes(principal(req), `user:${req.session.userId}`);
   }
 
   @Put('account')
@@ -131,8 +193,13 @@ export class DashboardController {
     return this.dash.settlementRules(req.session.merchantId);
   }
 
+  /** Cambiar la cuenta que recibe el dinero: con doble factor activo pide un código (`mfa_code`). */
   @Put('settlement_rules/:source')
-  saveRules(@Req() req: DashboardRequest, @Param('source') source: string, @Body() b: { rules?: [] }) {
+  async saveRules(@Req() req: DashboardRequest, @Param('source') source: string, @Body() b: { rules?: []; mfa_code?: string }) {
+    if (await this.mfa.isEnabled(principal(req))) {
+      if (!b.mfa_code) throw new ApiError(403, 'mfa_required', 'Para cambiar la cuenta de liquidación escribe el código de tu app autenticadora');
+      await this.mfa.verify(principal(req), b.mfa_code, `user:${req.session.userId}`);
+    }
     return this.dash.saveSettlementRules(req.session.merchantId, source, b.rules ?? []);
   }
 

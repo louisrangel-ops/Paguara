@@ -35,10 +35,11 @@ export class MerchantsService {
   async create(input: { businessName: string; rif: string; id?: string; webhookUrl?: string }) {
     const id = input.id ?? `acct_${randomBytes(8).toString('hex')}`;
     const webhookSecret = input.webhookUrl ? `whsec_${randomBytes(24).toString('hex')}` : null;
+    const sealed = webhookSecret && await sealSecret(webhookSecret);
     await withTransaction(this.pool, async (c) => {
       await c.query(
         `INSERT INTO merchants.merchants (id, business_name, rif, webhook_url, webhook_secret) VALUES ($1, $2, $3, $4, $5)`,
-        [id, input.businessName, input.rif.toUpperCase(), input.webhookUrl ?? null, webhookSecret && sealSecret(webhookSecret)],
+        [id, input.businessName, input.rif.toUpperCase(), input.webhookUrl ?? null, sealed],
       );
       await grantSandboxMethods(c, id);
     });

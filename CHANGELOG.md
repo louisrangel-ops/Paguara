@@ -5,6 +5,9 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 ## 2026-10-20
 
 ### Agregado
+- **Doble factor (2FA)**: app autenticadora y códigos de respaldo, obligatorio en el panel interno y opcional para los comercios. Ver [docs/doble-factor.md](docs/doble-factor.md).
+- **Gestor de secretos (KMS)**: las llaves y certificados de los bancos y los demás secretos se cifran con AWS KMS en producción. Ver [docs/gestor-de-secretos.md](docs/gestor-de-secretos.md).
+- **Conciliación bancaria diaria** contra el ledger, con diferencias y alertas (migración 014). Ver [docs/conciliacion.md](docs/conciliacion.md).
 - **Panel total de administración y RBAC**: roles master, cumplimiento, operaciones, tesorería, soporte, auditor y operador legado; directorio de comercios, KYC, perfiles ISO 8583 y reasignación de roles. Ver [docs/admin-panel-rbac.md](docs/admin-panel-rbac.md).
 - **Documentación privada y onboarding ISO 8583**: la guía de integración `#/docs` requiere sesión; el onboarding recoge identidad, ubicación, contacto y contexto e-commerce, y la migración 012 separa MCC/MID/TID y parámetros del adquirente. Ver [docs/merchant-onboarding-iso8583.md](docs/merchant-onboarding-iso8583.md).
 
