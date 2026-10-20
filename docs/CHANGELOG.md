@@ -9,6 +9,13 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+- [Web] `#/docs` exige sesión del comercio; se ocultan los enlaces de documentación en landing, navegación, pie y login hasta autenticar.
+- [Dashboard] Onboarding KYC ampliado con ubicación, soporte, actividad, URL e-commerce y descriptor; prohíbe usar el formulario para datos de tarjeta.
+- [Esquema] Migración 012: `merchants.iso8583_profiles` separa MCC/MID/TID/identificador adquirente y parámetros del perfil.
+- [API] `GET /internal/merchants/:id` para revisión y `POST /internal/merchants/:id/iso8583_profile` para provisionamiento técnico por el maestro.
+- [Docs] Nueva guía [merchant-onboarding-iso8583.md](merchant-onboarding-iso8583.md).
+
+
 - [Rieles] Base ISO 8583 en `src/payment-intents/rails/iso8583/`: codec ASCII de perfil de prueba y simulador emisor en memoria (autorización, rechazo, timeout, reversos, conciliación). No es un riel registrado ni toca `LIVEMODE` (#13).
 - [CI] Workflow `iso8583-tests.yml`: typecheck y pruebas unitarias en PRs que tocan el codec o el simulador (#13).
 - [Docs] `iso8583-acquirer-integration.md` (requisitos del adquirente y próximos pasos, #13). La documentación de #13 en métodos de pago, CI, pruebas e índice; el riel sandbox ya no se describe como activo en `LIVEMODE=true` y webhooks aclara que el secreto se guarda cifrado cuando hay `SECRETS_ENCRYPTION_KEY` (#11); entradas de #12 con su número (#15).
