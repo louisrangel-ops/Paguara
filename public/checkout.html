@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#101613" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..700&family=Spline+Sans+Mono:wght@500..600&display=swap">
 <style>
 /* Una sola columna, como un recibo: comercio, total, el boleto con la tasa congelada y el pago.
    El boleto amarillo es el único elemento llamativo y el único lugar con tipografía monoespaciada. */
@@ -29,6 +29,8 @@
   --font-ui: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
   --font-figure: "Spline Sans Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --radius: 12px;
+  --shadow-lift: 0 1px 2px rgba(23, 34, 29, 0.06), 0 24px 48px -12px rgba(23, 34, 29, 0.16);
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -61,8 +63,20 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 .checkout { max-width: 500px; margin: 0 auto; display: grid; gap: 20px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px; display: grid; gap: 24px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px; display: grid; gap: 24px; min-width: 0; box-shadow: var(--shadow-lift); }
 @media (max-width: 480px) { body { padding-block: 16px; } .card { padding: 20px; border-radius: 16px; } }
+/* En pantallas anchas, dos columnas como un mostrador: el pedido a la izquierda y el pago a la derecha */
+@media (min-width: 960px) {
+  body { padding-block: 64px 40px; }
+  .checkout { max-width: 980px; }
+  .card { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 24px 64px; padding: 40px; align-items: start; }
+  .merchant { grid-column: 1; grid-row: 1; }
+  .order { grid-column: 1; grid-row: 2; }
+  .card { grid-template-rows: auto auto 1fr; }
+  .card > .ticket { grid-column: 1; grid-row: 3; }
+  .pay { grid-column: 2; grid-row: 1 / span 3; }
+  .price { font-size: 56px; }
+}
 
 /* Comercio y total */
 .merchant { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -94,6 +108,9 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .ticket-stub { padding: 12px 20px 14px; display: flex; align-items: center; gap: 10px; font-family: var(--font-figure); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .ticket-stub .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ticket-ink); flex: none; }
 .ticket-stub.live .dot { animation: pulse 1.6s ease-in-out infinite; }
+/* Sello corto cuando aparece una cotización nueva */
+.ticket.stamp { animation: stamp 0.42s var(--ease-out); }
+@keyframes stamp { from { opacity: 0; transform: translateY(8px) scale(0.98); } 55% { opacity: 1; transform: scale(1.02); } }
 .ticket.expired { background: var(--bad-soft); color: var(--bad); }
 .ticket.expired .ticket-line, .ticket.expired .ticket-line .fig { color: var(--bad); }
 .ticket.expired .ticket-stub .dot { background: var(--bad); }
@@ -106,17 +123,23 @@ h1 { font-weight: 700; font-size: 22px; line-height: 1.25; letter-spacing: -0.01
 h1:focus { outline: none; }
 p { margin: 0; }
 .methods { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.m-group { display: grid; gap: 8px; }
+.m-group + .m-group { margin-top: 10px; }
+.m-group-h { font-size: 14px; font-weight: 600; color: var(--muted); }
+.m-group .m-cur { display: none; }
 .method {
   display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; min-height: 60px;
   text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 10px 16px; cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.14s var(--ease-out);
 }
 .method:hover:not([disabled]) { border-color: var(--field-line); }
+.method:active:not([disabled]) { transform: scale(0.985); }
 .method[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .method[disabled] { cursor: progress; }
 .method .tick { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--field-line); display: grid; place-items: center; }
 .method[aria-pressed="true"] .tick { border-color: var(--accent); }
-.method[aria-pressed="true"] .tick::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.method[aria-pressed="true"] .tick::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: pop 0.26s var(--ease-out); }
+@keyframes pop { from { transform: scale(0); } }
 .method .m-text { display: grid; min-width: 0; }
 .method .m-name { font-weight: 600; }
 .method .m-sub { font-size: 14px; color: var(--muted); }
@@ -141,9 +164,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px;
   font-weight: 600; font-size: 17px; border: none; border-radius: var(--radius); padding: 14px 18px; cursor: pointer;
-  background: var(--accent); color: var(--accent-ink);
-  transition: background-color 0.15s ease;
+  background: var(--accent); color: var(--accent-ink); font-variant-numeric: tabular-nums;
+  transition: background-color 0.15s ease, transform 0.14s var(--ease-out);
 }
+.btn:active:not([disabled]) { transform: scale(0.98); }
 .btn:hover:not([disabled]) { background: var(--accent-hover); }
 .btn[disabled] { cursor: progress; opacity: 0.8; }
 .btn .spinner { border-color: currentColor; border-top-color: transparent; }
@@ -172,7 +196,12 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--accent); animation: spin 0.9s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .done { display: grid; gap: 16px; min-width: 0; }
-.done-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--ok-soft); color: var(--ok); display: grid; place-items: center; }
+.done-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--ok-soft); color: var(--ok); display: grid; place-items: center; animation: pop 0.4s var(--ease-out); }
+/* La palomita se dibuja una vez (stroke-dashoffset) */
+.done-mark path { stroke-dasharray: 24; stroke-dashoffset: 0; animation: draw 0.5s var(--ease-out) 0.2s both; }
+@keyframes draw { from { stroke-dashoffset: 24; } }
+.done { animation: fade-up 0.4s var(--ease-out); }
+@keyframes fade-up { from { opacity: 0; transform: translateY(10px); } }
 .receipt { margin: 0; border: 1.5px solid var(--line); border-radius: var(--radius); padding: 6px 0; }
 .receipt div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 16px; }
 .receipt dt { color: var(--muted); }
@@ -184,8 +213,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .foot .brand { font-weight: 600; color: var(--ink); }
 .foot svg { vertical-align: -2px; margin-right: 4px; }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; }
-  .spinner, .ticket-stub.live .dot { animation: none; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 </style>
 
@@ -199,7 +227,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
       </div>
     </header>
 
-    <section class="order" aria-label="Pedido">
+    <section class="order" id="order" aria-label="Pedido">
       <p class="order-k">Total del pedido</p>
       <p class="price" id="price">…</p>
       <p class="desc" id="desc"></p>
@@ -262,6 +290,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
   const EXP = { VES: 2, USD: 2, EUR: 2, USDT: 6 };
   const SYMBOL = { VES: 'Bs', USD: 'USD', EUR: 'EUR', USDT: 'USDT' };
   const CUR_NAME = { VES: 'Bs', USD: 'USD', USDT: 'USDT' };
+  const GROUP_NAME = { VES: 'En bolívares', USD: 'En dólares', USDT: 'En USDT' };
   const RATE_NAMES = { BCV: 'Tasa BCV', BINANCE_P2P: 'Tasa USDT (Binance P2P)', EXCHANGE: 'Tasa del exchange', PARALLEL: 'Tasa' };
   const ERRORS = {
     insufficient_funds: 'Tu banco rechazó el pago por fondos insuficientes. Prueba con otra cuenta u otro método.',
@@ -498,6 +527,13 @@ input::placeholder { color: var(--muted); opacity: 1; }
     box.dataset.show = show ? '1' : '';
     if (!show) return;
     const method = METHODS.find((x) => x.type === pi.payment_method_type);
+    // El boleto hace un "sello" corto cada vez que aparece una cotización nueva (no en cada segundo del reloj)
+    const quote = pi.payment_method_type + ':' + pi.charge.amount;
+    if (box.dataset.quote !== quote) {
+      box.dataset.quote = quote;
+      box.classList.remove('stamp'); void box.offsetWidth; box.classList.add('stamp');
+      box.addEventListener('animationend', () => box.classList.remove('stamp'), { once: true });
+    }
     $('charge-method').textContent = method ? 'Pagas con ' + method.name : 'Pagas';
     $('charge-amount').textContent = fmt(pi.charge.amount, pi.charge.currency);
     $('igtf-row').hidden = !(pi.charge.igtf && pi.charge.igtf !== '0');
@@ -551,7 +587,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
     if (!list.length) {
       return el('div', { class: 'banner bad', role: 'alert' }, [el('b', { text: 'No hay métodos de pago disponibles' }), el('span', { text: 'Este comercio no tiene métodos de pago activos en este momento. Escríbele para que te indique cómo pagar.' })]);
     }
-    return el('div', { class: 'methods', role: 'group', 'aria-labelledby': 'pay-h' }, list.map((m) => {
+    const button = (m) => {
       const on = pi.payment_method_type === m.type && !!pi.charge;
       const loading = state.busy === 'attach' && state.selected === m.type;
       return el('button', {
@@ -562,7 +598,14 @@ input::placeholder { color: var(--muted); opacity: 1; }
         el('span', { class: 'm-text' }, [el('span', { class: 'm-name', text: m.name }), el('span', { class: 'm-sub', text: m.sub })]),
         el('span', { class: 'm-cur', text: 'en ' + CUR_NAME[m.cur] }),
       ]);
-    }));
+    };
+    // Agrupados por la moneda en que se paga; con una sola moneda no hace falta el título del grupo
+    const curs = [...new Set(list.map((m) => m.cur))];
+    if (curs.length < 2) return el('div', { class: 'methods', role: 'group', 'aria-labelledby': 'pay-h' }, list.map(button));
+    return el('div', { class: 'methods', role: 'group', 'aria-labelledby': 'pay-h' }, curs.map((c) => el('div', { class: 'm-group', role: 'group', 'aria-labelledby': 'g-' + c }, [
+      el('p', { class: 'm-group-h', id: 'g-' + c, text: GROUP_NAME[c] || c }),
+      ...list.filter((m) => m.cur === c).map(button),
+    ])));
   }
 
   function input(attrs) {
@@ -808,7 +851,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
     }
     if (screen === 'action') {
       pay.append(...instructions(pi.next_action));
-      pay.querySelector('h1').after(ticket);
+      if (WIDE.matches) $('order').after(ticket); else pay.querySelector('h1').after(ticket);
       ticket.hidden = !ticket.dataset.show;
       if (!api.demo) startPolling();
       const qr = document.getElementById('qr');
@@ -826,9 +869,15 @@ input::placeholder { color: var(--muted); opacity: 1; }
     if (err) pay.append(err);
     pay.append(methodPicker());
     const selected = state.selected || pi.payment_method_type;
-    if (selected && pi.charge && pi.payment_method_type === selected) { pay.append(ticket, methodForm(selected)); ticket.hidden = !ticket.dataset.show; }
+    if (selected && pi.charge && pi.payment_method_type === selected) {
+      // En pantallas anchas el boleto va debajo del total, en la columna del pedido; en el teléfono, antes del formulario
+      if (WIDE.matches) { $('order').after(ticket); pay.append(methodForm(selected)); } else pay.append(ticket, methodForm(selected));
+      ticket.hidden = !ticket.dataset.show;
+    }
     pay.append(demoNote() || '');
   }
+  const WIDE = matchMedia('(min-width: 960px)');
+  WIDE.addEventListener('change', () => { if (state.pi) render(); });
   const after = (fn) => (window.requestAnimationFrame ? requestAnimationFrame(fn) : setTimeout(fn, 0));
 
   // ---------------------------------------------------------------------------

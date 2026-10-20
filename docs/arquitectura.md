@@ -100,4 +100,4 @@ docs/                 esta documentación
 - `public/checkout.html`: checkout alojado tipo Stripe Checkout. Habla solo con `/v1/checkout/...`. Sin parámetros corre en modo demostración.
 - `public/site.html` + `public/assets/`: una sola página con rutas por hash (`#/`, `#/docs`, `#/entrar`, `#/registro`, `#/dashboard/...`). El servidor inyecta `window.__SERVER__ = true`; fuera del servidor corre en modo demo (`site-demo.js`).
 - `public/admin.html`: panel interno de operaciones (solicitudes de métodos/módulos, interruptores globales, ficha de comercio). Pide el `INTERNAL_API_TOKEN` al operador y lo guarda en `sessionStorage`.
-- La marca es la constante `BRAND` en `public/assets/site.js` y en el script de `checkout.html`. Diseño en [`DESIGN.md`](../DESIGN.md).
+- La marca es la constante `BRAND` en `public/assets/site.js` y en el script de `checkout.html`. Diseño en [`DESIGN.md`](../DESIGN.md); superficies, movimiento y verificación visual en [web.md](web.md).

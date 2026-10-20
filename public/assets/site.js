@@ -219,6 +219,36 @@
     return el('a', { class: 'brand', href: href || '#/', 'aria-label': BRAND.name + ', inicio' }, [brandMark(), el('span', { translate: 'no', text: BRAND.name })]);
   }
   const spinner = () => el('span', { class: 'spinner', 'aria-hidden': 'true' });
+
+  // ---------------------------------------------------------------------------
+  // Movimiento: sin librerías. CSS hace las animaciones; aquí solo se decide cuándo.
+  // Con prefers-reduced-motion (o sin IntersectionObserver) todo se ve quieto desde el principio.
+  // ---------------------------------------------------------------------------
+  const MOTION = !!window.matchMedia && !matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window;
+  document.documentElement.classList.toggle('motion', MOTION);
+  // Temporizador que se cancela solo al cambiar de vista
+  function later(fn, ms) { const id = setTimeout(fn, ms); state.cleanups.push(() => clearTimeout(id)); }
+  // Revela cada [data-rv] una sola vez cuando entra en pantalla y anima los [data-count] que contiene
+  function reveal(root) {
+    if (!MOTION) return;
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      io.unobserve(e.target);
+      e.target.classList.add('in');
+      e.target.querySelectorAll('[data-count]').forEach(countUp);
+    }), { rootMargin: '0px 0px -8% 0px', threshold: 0.1 });
+    root.querySelectorAll('[data-rv]').forEach((n) => io.observe(n));
+    state.cleanups.push(() => io.disconnect());
+  }
+  function countUp(n) {
+    const to = Number(n.dataset.count), t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 700);
+      n.textContent = String(Math.round(to * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
   function announce(msg) {
     const s = $('announcer');
     s.textContent = '';
@@ -550,67 +580,118 @@
     setTitle('');
     const c2p = PRICING[0];
     const demoCharge = worked('2500', '36.5', c2p).charge;
-    const hero = el('section', { class: 'hero', 'aria-labelledby': 'hero-h' }, [el('div', { class: 'wrap' }, [
-      el('div', {}, [
-        el('h1', { id: 'hero-h', tabindex: '-1', text: 'Cobra en bolívares, dólares y USDT con una sola integración.' }),
-        el('p', { class: 'lede', text: 'Pago Móvil, débito inmediato, tarjetas, Zelle, USDT y efectivo en un mismo checkout. La tasa se congela en el momento en que tu cliente paga: el monto que ve es el que cobras.' }),
-        el('div', { class: 'ctas' }, [
-          el('a', { class: 'btn lg', href: '#/registro', text: 'Crear cuenta' }),
-          el('a', { class: 'btn lg ghost', href: '#/docs', text: 'Leer la documentación' }),
-        ]),
-        el('p', { class: 'fine', text: 'Empiezas en modo de prueba, sin papeleo. Activas los cobros reales cuando envíes los datos de tu empresa.' }),
+    const rateFig = el('span', { class: 'fig', text: '1 USD = 36,50 Bs' });
+    const ticketAmount = el('span', { class: 'ticket-amount', text: fmt(demoCharge, 'VES') });
+    const stubText = el('span', { text: 'Tasa congelada para este pago' });
+    const ticket = el('div', { class: 'ticket is-frozen' }, [
+      el('div', { class: 'ticket-main' }, [
+        el('span', { class: 'ticket-k', text: 'Pagas con Pago Móvil' }),
+        ticketAmount,
+        el('span', { class: 'ticket-line' }, ['Tasa BCV: ', rateFig]),
       ]),
-      el('figure', { class: 'receipt-demo', 'aria-label': 'Ejemplo del checkout: un pedido de 25 dólares pagado por Pago Móvil con la tasa BCV congelada', style: 'margin:0' }, [
+      el('div', { class: 'ticket-tear' }),
+      el('div', { class: 'ticket-stub' }, [el('span', { class: 'dot' }), stubText]),
+    ]);
+    const payBtn = el('div', { class: 'fake-btn', text: 'Pagar ' + fmt(demoCharge, 'VES') });
+    const hero = el('section', { class: 'hero', 'aria-labelledby': 'hero-h' }, [el('div', { class: 'wrap hero-grid' }, [
+      el('div', { class: 'hero-copy' }, [
+        el('h1', { id: 'hero-h', tabindex: '-1', class: 'rise', style: '--i:0', text: 'Cobra en bolívares, dólares y USDT con una sola integración.' }),
+        el('p', { class: 'lede rise', style: '--i:1', text: 'Pago Móvil, débito inmediato, tarjetas, Zelle, USDT y efectivo en un mismo checkout. La tasa se congela en el momento en que tu cliente paga: el monto que ve es el que cobras.' }),
+        el('div', { class: 'ctas rise', style: '--i:2' }, [
+          el('a', { class: 'btn lg', href: '#/registro' }, ['Crear cuenta', el('span', { class: 'arrow', 'aria-hidden': 'true', text: '→' })]),
+          el('a', { class: 'btn lg quiet', href: '#/docs', text: 'Leer la documentación' }),
+        ]),
+        el('p', { class: 'fine rise', style: '--i:3', text: 'Empiezas en modo de prueba, sin papeleo. Activas los cobros reales cuando envíes los datos de tu empresa.' }),
+      ]),
+      el('figure', { class: 'receipt-demo rise', style: '--i:2', 'aria-label': 'Ejemplo del checkout: un pedido de 25 dólares pagado por Pago Móvil con la tasa BCV congelada' }, [
         el('div', { class: 'receipt-card', 'aria-hidden': 'true' }, [
           el('div', { class: 'who' }, [el('div', { class: 'mark', text: 'C' }), el('div', {}, [el('b', { text: 'Café El Ávila' }), el('span', { text: 'Pedido #1043' })])]),
           el('div', {}, [el('div', { class: 'total-k', text: 'Total del pedido' }), el('div', { class: 'total' }, ['25,00', el('small', { text: 'USD' })])]),
           el('div', { class: 'pay-row' }, [el('span', { class: 'tick' }), el('div', {}, [el('b', { text: 'Pago Móvil' }), el('span', { text: 'Con la clave de pago de tu banco' })])]),
-          el('div', { class: 'ticket' }, [
-            el('div', { class: 'ticket-main' }, [
-              el('span', { class: 'ticket-k', text: 'Pagas con Pago Móvil' }),
-              el('span', { class: 'ticket-amount', text: fmt(demoCharge, 'VES') }),
-              el('span', { class: 'ticket-line' }, ['Tasa BCV: ', el('span', { class: 'fig', text: '1 USD = 36,50 Bs' })]),
-            ]),
-            el('div', { class: 'ticket-tear' }),
-            el('div', { class: 'ticket-stub' }, [el('span', { class: 'dot' }), 'Tasa congelada para este pago']),
-          ]),
-          el('div', { class: 'fake-btn', text: 'Pagar ' + fmt(demoCharge, 'VES') }),
+          ticket,
+          payBtn,
         ]),
       ]),
     ])]);
+    // El único momento orquestado del sitio: la tasa se mueve unos instantes y se congela.
+    if (MOTION) {
+      const steps = ['36.47', '36.52', '36.49', '36.5'];
+      ticket.classList.remove('is-frozen');
+      stubText.textContent = 'Cotizando con la tasa BCV…';
+      let n = 0;
+      const tickRate = () => {
+        const r = steps[n];
+        const charge = fmt(worked('2500', r, c2p).charge, 'VES');
+        rateFig.textContent = '1 USD = ' + fmtRate(r) + ' Bs';
+        ticketAmount.textContent = charge;
+        payBtn.textContent = 'Pagar ' + charge;
+        if (++n < steps.length) { later(tickRate, 260); return; }
+        ticket.classList.add('is-frozen');
+        stubText.textContent = 'Tasa congelada para este pago';
+      };
+      later(tickRate, 700);
+    }
 
-    const methods = [
-      ['phone', 'Pago Móvil C2P y P2P', 'Con clave de pago o por transferencia desde la app del banco.', 'Bs'],
-      ['bank', 'Débito inmediato', 'Cargo directo a la cuenta del cliente en bancos nacionales.', 'Bs'],
-      ['card', 'Tarjetas nacionales', 'Débito y crédito emitidas en Venezuela.', 'Bs'],
-      ['globe', 'Tarjetas internacionales', 'Visa, Mastercard y Amex emitidas fuera del país.', 'USD'],
-      ['swap', 'Zelle', 'Le mostramos al cliente el correo y el concepto exactos.', 'USD'],
-      ['tower', 'Banesco Panamá', 'Transferencias en dólares entre cuentas de Banesco Panamá.', 'USD'],
-      ['coin', 'USDT', 'Por las redes TRC-20 (TRON) y Polygon, con QR y monto exacto.', 'USDT'],
-      ['cash', 'Efectivo en dólares', 'En taquillas aliadas, con el IGTF incluido en el monto.', 'USD'],
+    const RAILS = [['Pago Móvil', 'Bs'], ['Débito inmediato', 'Bs'], ['Tarjeta nacional', 'Bs'], ['Tarjeta internacional', 'USD'], ['Zelle', 'USD'], ['Banesco Panamá', 'USD'], ['USDT TRC-20', 'USDT'], ['USDT Polygon', 'USDT'], ['Efectivo en dólares', 'USD']];
+    const railList = () => el('ul', {}, RAILS.map(([n, c]) => el('li', {}, [n, el('span', { class: 'cur', text: c })])));
+    const rails = el('div', { class: 'rails', 'aria-hidden': 'true' }, [el('div', { class: 'rails-track' }, [railList(), railList()])]);
+
+    const groups = [
+      ['Bs', 'Bolívares', 'Llegan a tu cuenta en un banco nacional.', [
+        ['phone', 'Pago Móvil C2P y P2P', 'Con clave de pago o por transferencia desde la app del banco.'],
+        ['bank', 'Débito inmediato', 'Cargo directo a la cuenta del cliente en bancos nacionales.'],
+        ['card', 'Tarjetas nacionales', 'Débito y crédito emitidas en Venezuela.'],
+      ]],
+      ['USD', 'Dólares', 'Quedan en tu saldo en dólares, sin pasar por el cambio.', [
+        ['globe', 'Tarjetas internacionales', 'Visa, Mastercard y Amex emitidas fuera del país.'],
+        ['swap', 'Zelle', 'Le mostramos al cliente el correo y el concepto exactos.'],
+        ['tower', 'Banesco Panamá', 'Transferencias en dólares entre cuentas de Banesco Panamá.'],
+        ['cash', 'Efectivo en dólares', 'En taquillas aliadas, con el IGTF incluido en el monto.'],
+      ]],
+      ['USDT', 'USDT', 'Con QR y monto exacto, y también puedes liquidar en USDT.', [
+        ['coin', 'USDT en TRC-20', 'Por la red de TRON, la más usada en Venezuela.'],
+        ['coin', 'USDT en Polygon', 'Comisiones de red más bajas para montos pequeños.'],
+      ]],
     ];
     const methodsSec = el('section', { class: 'section', 'aria-labelledby': 'met-h' }, [el('div', { class: 'wrap' }, [
-      el('div', { class: 'section-head' }, [
+      el('div', { class: 'section-head', 'data-rv': '' }, [
         el('h2', { id: 'met-h', text: 'Todos los métodos que usan tus clientes' }),
-        el('p', { text: 'Tu cliente elige cómo pagar. Tú integras una sola API y ves todo en el mismo panel, en la moneda en que se cobró.' }),
+        el('p', {}, [
+          el('span', { class: 'num tally', 'data-count': '10', text: '10' }), ' métodos de pago y ', el('span', { class: 'num tally', 'data-count': '3', text: '3' }),
+          ' monedas detrás de una sola API. Ves todo en el mismo panel, en la moneda en que se cobró.',
+        ]),
       ]),
-      el('ul', { class: 'methods-grid' }, methods.map(([ic, name, sub, cur]) => el('li', {}, [
-        el('span', { class: 'ico' }, [icon(ic, 22)]), el('b', {}, [name, el('span', { class: 'cur', text: cur })]), el('span', { text: sub }),
+      el('div', { class: 'cur-cols' }, groups.map(([code, name, note, list], gi) => el('section', { class: 'cur-col', 'aria-labelledby': 'cur-' + code, 'data-rv': '', style: '--i:' + gi }, [
+        el('header', {}, [
+          el('span', { class: 'cur-code', 'aria-hidden': 'true', text: code }),
+          el('h3', { id: 'cur-' + code, text: 'En ' + name.toLowerCase().replace('usdt', 'USDT') }),
+          el('p', { text: note }),
+        ]),
+        el('ul', {}, list.map(([ic, n, sub]) => el('li', {}, [el('span', { class: 'ico' }, [icon(ic, 20)]), el('b', { text: n }), el('span', { text: sub })]))),
       ]))),
     ])]);
 
+    const flow = [
+      ['Creas el pago', 'requires_payment_method', 'Desde tu servidor, con el precio en dólares o en bolívares, o con un link de pago desde el panel.'],
+      ['Tu cliente elige y paga', 'processing', 'Ve el monto en su moneda. La tasa se congela en cuanto confirma.'],
+      ['El banco confirma', 'succeeded', 'Te avisamos por webhook firmado y el pago aparece en tu panel.'],
+      ['Recibes tu dinero', 'settled', 'Liquidamos tu saldo según tu regla: todo en bolívares o repartido entre Bs y USDT.'],
+    ];
     const steps = el('section', { class: 'section', 'aria-labelledby': 'how-h' }, [el('div', { class: 'wrap' }, [
-      el('div', { class: 'section-head' }, [el('h2', { id: 'how-h', text: 'Cómo funciona' })]),
-      el('ol', { class: 'steps3' }, [
-        el('li', {}, [el('h3', { text: 'Creas el pago' }), el('p', { text: 'Desde tu servidor, con el precio en dólares o en bolívares. También puedes crear un link de pago desde el panel, sin programar.' })]),
-        el('li', {}, [el('h3', { text: 'Tu cliente paga' }), el('p', { text: 'En el checkout elige el método, ve el monto en su moneda y paga. La tasa queda congelada desde que confirma.' })]),
-        el('li', {}, [el('h3', { text: 'Recibes tu dinero' }), el('p', { text: 'Te avisamos por webhook y liquidamos tu saldo según tu regla: todo en bolívares o repartido entre Bs y USDT.' })]),
+      el('div', { class: 'section-head', 'data-rv': '' }, [
+        el('h2', { id: 'how-h', text: 'Cómo funciona' }),
+        el('p', { text: 'Cada pago recorre los mismos estados, en el panel y en la API. Nunca retrocede y nunca se cobra dos veces.' }),
       ]),
+      el('ol', { class: 'flow', 'data-rv': '' }, flow.map(([t, st, d], i) => el('li', { style: '--i:' + i }, [
+        el('span', { class: 'flow-dot', 'aria-hidden': 'true' }),
+        el('code', { translate: 'no', text: st }),
+        el('h3', { text: t }),
+        el('p', { text: d }),
+      ]))),
     ])]);
-
     const curl = 'curl ' + API_BASE + '/v1/payment_intents \\\n  -H "Authorization: Bearer sk_test_…" \\\n  -H "Idempotency-Key: pedido-1043" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"amount": "2500", "currency": "USD", "metadata": {"pedido": "1043"}}\'';
     const dev = el('section', { class: 'section', 'aria-labelledby': 'dev-h' }, [el('div', { class: 'wrap dev-split' }, [
-      el('div', {}, [
+      el('div', { 'data-rv': '' }, [
         el('div', { class: 'section-head', style: 'margin-bottom:0' }, [
           el('h2', { id: 'dev-h', text: 'Una API pensada para montos exactos' }),
           el('p', { text: 'Los montos viajan como enteros en unidades mínimas: nada de céntimos perdidos por redondeo.' }),
@@ -623,16 +704,16 @@
         ]),
         el('p', { style: 'margin-top:20px' }, [el('a', { href: '#/docs/crear-pago', text: 'Ver cómo crear un pago' })]),
       ]),
-      codeBlock(curl, 'Crear un pago de USD 25,00'),
+      el('div', { 'data-rv': '', style: '--i:1' }, [codeBlock(curl, 'Crear un pago de USD 25,00')]),
     ])]);
 
     const ex = worked('10000', '36.5', c2p);
     const pricing = el('section', { class: 'section', id: 'precios', 'aria-labelledby': 'precios-h' }, [el('div', { class: 'wrap' }, [
-      el('div', { class: 'section-head' }, [
+      el('div', { class: 'section-head', 'data-rv': '' }, [
         el('h2', { id: 'precios-h', tabindex: '-1', text: 'Precios por cobro exitoso' }),
         el('p', { text: 'Pagas una comisión por cada pago cobrado, según el método. La parte fija se fija en dólares y se convierte con la tasa del cobro.' }),
       ]),
-      el('div', { class: 'table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Tabla de precios' }, [el('table', { id: 'pricing-table', class: 'stack-sm' }, pricingRows())]),
+      el('div', { class: 'table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Tabla de precios', 'data-rv': '' }, [el('table', { id: 'pricing-table', class: 'stack-sm' }, pricingRows())]),
       el('div', { class: 'example' }, [
         el('p', { class: 'muted' }, [
           'Ejemplo: un pedido de ', el('span', { class: 'num', text: 'USD 100,00' }), ' pagado por Pago Móvil con tasa BCV de 36,50. Tu cliente paga ',
@@ -653,7 +734,7 @@
     }
 
     const split = el('section', { class: 'section', 'aria-labelledby': 'split-h' }, [el('div', { class: 'wrap' }, [
-      el('div', { class: 'split-demo' }, [
+      el('div', { class: 'split-demo', 'data-rv': '' }, [
         el('div', { class: 'section-head', style: 'margin:0' }, [
           el('h2', { id: 'split-h', text: 'Liquida en la mezcla que te sirve' }),
           el('p', { text: 'Define qué parte de tu saldo en bolívares recibes en tu banco y qué parte en USDT. Las porciones convertidas usan la tasa del momento del corte y verás el spread de cobertura en cada liquidación.' }),
@@ -668,12 +749,13 @@
           ]),
         ]),
       ]),
-      el('div', { class: 'cta-band' }, [
+      el('div', { class: 'cta-band', 'data-rv': '' }, [
         el('div', {}, [el('h2', { text: 'Prueba la integración hoy mismo' }), el('p', { text: 'Crea tu cuenta, toma tus llaves de prueba y haz tu primer cobro de ensayo.' })]),
         el('a', { class: 'btn lg', href: '#/registro', text: 'Crear cuenta' }),
       ]),
     ])]);
-    main.replaceChildren(hero, methodsSec, steps, dev, pricing, split);
+    main.replaceChildren(hero, rails, methodsSec, steps, dev, pricing, split);
+    reveal(main);
   }
   function pricingRows() {
     return [
@@ -1075,7 +1157,7 @@
       const date = new Date(p.date + 'T12:00:00');
       const g = svg('g', {}, [
         svg('rect', { class: 'hit', x: L + slot * i, y: T, width: slot, height: ih }),
-        d ? svg('path', { class: 'bar', d }) : null,
+        d ? svg('path', { class: 'bar', d, style: '--i:' + i }) : null,
         i % 2 === (points.length - 1) % 2 ? svg('text', { class: 'axis', x: L + slot * i + slot / 2, y: H - 10, 'text-anchor': 'middle' }, [String(date.getDate())]) : null,
       ]);
       const show = () => {
@@ -2094,7 +2176,12 @@
   // ---------------------------------------------------------------------------
   // Arranque
   // ---------------------------------------------------------------------------
-  window.addEventListener('hashchange', render);
+  // Entre páginas públicas, un fundido corto con la View Transitions API (si el navegador la tiene).
+  // El panel no la usa: espera datos de la red y la transición congelaría la pantalla mientras tanto.
+  window.addEventListener('hashchange', () => {
+    if (MOTION && document.startViewTransition && !parseHash().path.startsWith('/dashboard')) document.startViewTransition(() => { render(); });
+    else render();
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     const side = $('side');
