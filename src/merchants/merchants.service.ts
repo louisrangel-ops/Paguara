@@ -206,14 +206,14 @@ export class MerchantsService {
       }
       return v || null;
     };
-    const status = text('status', /^(pending|provisioned|suspended)$/) ?? 'pending';
+    const status = text('status', /^(pending|provisioned|suspended)$/, false) ?? 'pending';
     const mcc = text('mcc', /^\d{4}$/);
     const mid = text('acquirer_merchant_id', /^[\x20-\x7e]{1,15}$/);
     const tid = text('terminal_id', /^[\x20-\x7e]{1,8}$/);
     const acquirer = text('acquiring_institution_id', /^\d{1,11}$/);
-    const currencyNumeric = text('currency_numeric', /^\d{3}$/) ?? '928';
-    const posEntryMode = text('pos_entry_mode', /^\d{3}$/) ?? '090';
-    const posConditionCode = text('pos_condition_code', /^\d{2}$/) ?? '59';
+    const currencyNumeric = text('currency_numeric', /^\d{3}$/, false) ?? '928';
+    const posEntryMode = text('pos_entry_mode', /^\d{3}$/, false) ?? '090';
+    const posConditionCode = text('pos_condition_code', /^\d{2}$/, false) ?? '59';
 
     await this.pool.query(
       `INSERT INTO merchants.iso8583_profiles
