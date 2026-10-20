@@ -114,7 +114,7 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
 <main id="main">
   <div class="intro">
     <h1>Panel interno</h1>
-    <p class="muted">Liquidaciones por aprobar, solicitudes de los comercios, interruptores de la plataforma y capacidades por comercio. Cada acción queda en la auditoría con tu nombre.</p>
+    <p class="muted">Administración integral de Paguara: comercios y KYC, perfiles ISO 8583, métodos por contrato, liquidaciones, operación de plataforma y usuarios internos con permisos por rol. Cada acción sensible queda asociada al operador.</p>
   </div>
 
   <form class="card auth" id="auth" autocomplete="off">
@@ -129,22 +129,31 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
 
   <div id="app" hidden>
     <div style="display:grid;gap:20px">
-      <section class="card" aria-labelledby="po-h">
+      <section class="card" data-perm="payouts:read" aria-labelledby="po-h">
         <div class="head"><h2 id="po-h">Liquidaciones por aprobar<span class="count" id="po-count" hidden></span></h2><button class="btn ghost" type="button" id="reload">Actualizar</button></div>
         <p class="muted">Ninguna liquidación llega a tesorería sin la aprobación de personas distintas. Revisa monto, comercio y cuenta antes de aprobar.</p>
         <div id="payouts"></div>
       </section>
-      <section class="card" aria-labelledby="req-h">
+      <section class="card" data-perm="capabilities:read" aria-labelledby="req-h">
         <h2 id="req-h">Solicitudes de métodos y módulos<span class="count" id="req-count" hidden></span></h2>
         <p class="muted master-only">Un método de pago se habilita solo con su contrato firmado: escribe el número antes de aprobar.</p>
         <div id="requests"></div>
       </section>
-      <section class="card master-only" aria-labelledby="glob-h">
+      <section class="card" data-perm="platform:manage" aria-labelledby="glob-h">
         <h2 id="glob-h">Interruptores de la plataforma</h2>
         <p class="muted">“Para todos” apagado bloquea el método o módulo en todos los comercios al instante. “Comercios nuevos” solo aplica a módulos: los métodos de pago se habilitan por contrato.</p>
         <div id="globals"></div>
       </section>
-      <section class="card master-only" aria-labelledby="m-h">
+      <section class="card" data-perm="merchants:read" aria-labelledby="ml-h">
+        <div class="head"><h2 id="ml-h">Comercios</h2><span class="muted">KYC · ISO 8583 · estado</span></div>
+        <form class="row" id="ml-form">
+          <div class="field"><label for="ml-q">Buscar</label><input id="ml-q" placeholder="Nombre, RIF o acct_…" spellcheck="false"></div>
+          <div class="field"><label for="ml-status">Estado</label><select id="ml-status"><option value="">Todos</option><option value="pending_kyc">KYC pendiente</option><option value="active">Activo</option><option value="restricted">Restringido</option><option value="closed">Cerrado</option></select></div>
+          <button class="btn" type="submit">Buscar</button>
+        </form>
+        <div id="merchant-list"></div>
+      </section>
+      <section class="card" data-perm="merchants:read" aria-labelledby="m-h">
         <h2 id="m-h">Un comercio</h2>
         <form class="row" id="m-form">
           <div class="field"><label for="m-id">Id del comercio</label><input id="m-id" required placeholder="acct_…" spellcheck="false" pattern="[a-z0-9_]+"></div>
@@ -152,11 +161,11 @@ code { font-family: var(--font-figure); font-size: 13px; color: var(--muted); fo
         </form>
         <div id="merchant"></div>
       </section>
-      <section class="card master-only" aria-labelledby="op-h">
+      <section class="card" data-perm="operators:read" aria-labelledby="op-h">
         <h2 id="op-h">Operadores</h2>
-        <form class="row" id="op-form">
+        <form class="row" id="op-form" data-perm="operators:manage">
           <div class="field"><label for="op-name">Nombre</label><input id="op-name" required minlength="2" maxlength="60" placeholder="ana.tesoreria…"></div>
-          <div class="field"><label for="op-role">Rol</label><select id="op-role"><option value="operator">Operador (aprueba liquidaciones)</option><option value="master">Maestro</option></select></div>
+          <div class="field"><label for="op-role">Rol</label><select id="op-role"><option value="support">Soporte</option><option value="compliance">Cumplimiento</option><option value="operations">Operaciones</option><option value="treasury">Tesorería</option><option value="auditor">Auditor</option><option value="operator">Operador legado</option><option value="master">Maestro / Superadmin</option></select></div>
           <button class="btn" type="submit">Crear</button>
         </form>
         <div id="op-new" role="status"></div>
