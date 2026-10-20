@@ -1,13 +1,13 @@
 // Genera la web estática en modo demostración (dist-web/) para hospedarla sin la API, por ejemplo en Vercel.
 // Envuelve las páginas igual que los controladores de Nest, pero sin window.__SERVER__: el sitio usa
 // site-demo.js y el checkout simula un pago. El panel interno (/admin) no se incluye porque necesita la API.
-// Uso: node scripts/build-web.mjs [carpeta de salida]
+// Uso: node scripts/build-web.mjs (la salida es siempre dist-web/: así el borrado previo nunca toca el repo)
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const out = join(root, process.argv[2] || 'dist-web');
+const out = join(root, 'dist-web');
 const page = (file) => '<!doctype html><html lang="es"><head><meta charset="utf-8">'
   + '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"></head><body>'
   + readFileSync(join(root, 'public', file), 'utf8')

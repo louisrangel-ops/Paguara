@@ -17,7 +17,9 @@ test('API keys: solo se guarda el hash; revocar la invalida; formato estricto', 
 
   const auth = await ctx.merchants.authenticate(sk.key);
   assert.deepEqual(auth, { merchantId: m, merchantStatus: 'pending_kyc', kind: 'secret', livemode: false });
-  assert.equal(await ctx.merchants.authenticate(sk.key.slice(0, -1) + '0'), null);
+  // Cambia el último carácter por uno distinto (si la llave ya terminaba en '0', la "falsa" era la misma).
+  const tampered = sk.key.slice(0, -1) + (sk.key.endsWith('0') ? '1' : '0');
+  assert.equal(await ctx.merchants.authenticate(tampered), null);
   assert.equal(await ctx.merchants.authenticate("sk_test_' OR 1=1 --"), null);
 
   await ctx.merchants.revokeApiKey(m, sk.id);
