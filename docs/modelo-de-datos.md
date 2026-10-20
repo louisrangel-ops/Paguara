@@ -137,6 +137,10 @@ Detalle en [legal.md](legal.md).
 | `P0020` | Liberar o aprobar una liquidación sin las aprobaciones pedidas | 409 `payout_not_approved` |
 | `23505` en `payment_intents_rail_ref_idx` | Referencia bancaria reutilizada | 409 `rail_reference_already_used` |
 
+Hay dos migraciones 012 (de PRs en paralelo). `scripts/migrate.ts` registra cada archivo por su nombre en
+`public.schema_migrations` y las aplica en orden alfabético, así que corren las dos: primero
+`012_iso8583_merchant_profiles.sql` y después `012_return_url.sql`. Las migraciones nuevas siguen desde la 016.
+
 ### 012 · `012_iso8583_merchant_profiles.sql` y 013 · `013_admin_rbac.sql`
 Perfiles ISO 8583 por comercio ([merchant-onboarding-iso8583.md](merchant-onboarding-iso8583.md)) y roles del panel
 interno con `platform.operator_role_changes` ([admin-panel-rbac.md](admin-panel-rbac.md)).
