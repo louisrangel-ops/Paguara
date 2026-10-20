@@ -8,7 +8,7 @@ tipos y medidas exactos están en [`DESIGN.md`](../DESIGN.md).
 
 | Superficie | Ruta | Archivos | Quién la sirve |
 |---|---|---|---|
-| Sitio público, registro, documentación y panel del comercio | `GET /` (rutas en el hash: `#/`, `#/precios`, `#/docs`, `#/entrar`, `#/registro`, `#/dashboard/...`) | `public/site.html`, `public/assets/site.css`, `public/assets/site.js`, `public/assets/site-demo.js` | `src/dashboard/dashboard.controller.ts` (envuelve `site.html` y pone `window.__SERVER__ = true`) |
+| Sitio público, registro, documentación, páginas legales y panel del comercio | `GET /` (rutas en el hash: `#/`, `#/precios`, `#/docs`, `#/legal/...`, `#/entrar`, `#/registro`, `#/dashboard/...`) | `public/site.html`, `public/assets/site.css`, `public/assets/site.js`, `public/assets/site-demo.js`, `public/assets/legal.js` ([textos legales](legal.md)) | `src/dashboard/dashboard.controller.ts` (envuelve `site.html` y pone `window.__SERVER__ = true`) |
 | Checkout alojado | `GET /checkout?pi=…&cs=…&pk=…` | `public/checkout.html` (CSS y JS en línea) | `src/checkout-page.controller.ts` |
 | Panel interno | `GET /admin` | `public/admin.html` (CSS y JS en línea) | `src/admin-page.controller.ts` |
 | Estáticos | `GET /assets/*` | `public/assets/` | `src/main.ts` (`useStaticAssets`, caché de 1 h) |

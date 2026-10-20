@@ -7,7 +7,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | Documento | Contenido |
 |---|---|
 | [Arquitectura y módulos](arquitectura.md) | Procesos, módulos NestJS, flujo de un pedido, estructura del repo |
-| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–010 |
+| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–011 |
 | [Ledger y plan de cuentas](ledger.md) | Doble partida multi-moneda, cuentas, plantillas de asientos, garantías de la BD |
 | [Máquina de estados del PaymentIntent](payment-intents.md) | Estados, eventos, congelamiento de tasa, vencimiento, idempotencia |
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |
@@ -20,6 +20,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [Configuración](configuracion.md) | Variables de entorno, una por una |
 | [Despliegue, pruebas y CI](despliegue.md) | Docker, Railway, migraciones, seed, dev-jobs, pruebas, CI |
 | [Web: diseño y movimiento](web.md) | Superficies web, proceso de diseño, reglas y presupuesto de las animaciones, cómo verificar un cambio visual |
+| [Documentos legales](legal.md) | Términos, acuerdo de comercio, privacidad, cookies, uso aceptable, LC/FT, divulgación responsable; constancia de aceptación y `security.txt` |
 | [Seguridad](seguridad.md) | Secretos, llaves, sesiones, CSRF, límites de peticiones, puerto interno, operadores, gitleaks |
 | [CHANGELOG técnico](CHANGELOG.md) | Historial de cambios técnicos por PR |
 

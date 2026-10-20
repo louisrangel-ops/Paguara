@@ -16,7 +16,7 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 | `payments` | PaymentIntents, transiciones, links de pago | 003, 005, 007, 008 |
 | `merchants` | Comercios, llaves API, reglas de liquidación, capacidades por comercio | 005, 007, 008 |
 | `settlements` | Lotes, liquidaciones e instrucciones de pago | 006 |
-| `dashboard` | Usuarios del panel y sesiones | 007 |
+| `dashboard` | Usuarios del panel, sesiones y aceptación de documentos legales | 007, 011 |
 | `webhooks` | Endpoints, eventos (outbox) y entregas | 007 |
 | `platform` | Catálogo de métodos y módulos con su interruptor global | 008, 009 |
 
@@ -95,6 +95,12 @@ siguiente número, documentada aquí y en el [CHANGELOG](CHANGELOG.md).
 - Métodos por contrato: `default_for_new = false` en todos los métodos y CHECK `capabilities_methods_by_contract`; `merchants.capabilities.contract_ref` (3 a 120 caracteres).
 
 Detalle funcional en [modulos-por-comercio.md](modulos-por-comercio.md) y [liquidaciones.md](liquidaciones.md).
+
+### 011 · `011_legal_acceptances.sql` — Aceptación de los documentos legales
+- `dashboard.legal_acceptances (user_id, merchant_id, document, version, accepted_at, ip, user_agent)`: una fila por documento aceptado al registrarse (`terminos`, `comercios`, `privacidad`, `uso-aceptable`); `version` con forma `AAAA-MM-DD`; único por persona, documento y versión.
+- Append-only: triggers `legal_acceptances_immutable` y `legal_acceptances_no_truncate` (`ledger.tg_immutable`).
+
+Detalle en [legal.md](legal.md).
 
 ## Prefijos de identificadores
 

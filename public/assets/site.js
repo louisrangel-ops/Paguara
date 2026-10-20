@@ -510,6 +510,9 @@
       const main = publicShell(app, 'docs');
       docs(main, p[1]);
       if (p[1]) focusTarget = $('doc-' + p[1]);
+    } else if (p[0] === 'legal' && p.length <= 2) {
+      const main = publicShell(app, 'legal');
+      if (!legalPage(main, p[1])) notFound(main);
     } else {
       const main = publicShell(app, '');
       notFound(main);
@@ -554,6 +557,11 @@
         el('nav', { 'aria-label': 'Pie de página' }, [
           el('a', { href: '#/precios', text: 'Precios' }), el('a', { href: '#/docs', text: 'Documentación' }),
           el('a', { href: '#/docs/pruebas', text: 'Modo de prueba' }), el('a', { href: '#/entrar', text: 'Entrar' }),
+        ]),
+        el('nav', { class: 'legal-links', 'aria-label': 'Legal' }, [
+          el('a', { href: '#/legal/terminos', text: 'Términos' }), el('a', { href: '#/legal/privacidad', text: 'Privacidad' }),
+          el('a', { href: '#/legal/cookies', text: 'Cookies' }), el('a', { href: '#/legal/seguridad', text: 'Seguridad' }),
+          el('a', { href: '#/legal', text: 'Todo lo legal', 'aria-current': current === 'legal' ? 'page' : false }),
         ]),
       ])]),
     );
@@ -979,7 +987,14 @@
       const pw = pwField('su-pass', 'Contraseña', 'new-password', [rule]);
       const pwInput = pw.querySelector('input');
       pwInput.addEventListener('input', () => { if (pwInput.value.length >= 10) rule.dataset.ok = '1'; else delete rule.dataset.ok; });
-      form.append(name, email, biz, rif, pw);
+      // Constancia de aceptación: el servidor la exige (accept_terms) y la guarda con versión, IP y navegador
+      const legal = (slug, t) => el('a', { href: '#/legal/' + slug, target: '_blank', rel: 'noopener', text: t });
+      const terms = el('input', { id: 'su-terms', name: 'accept_terms', type: 'checkbox', required: true });
+      const termsField = el('div', { class: 'field' }, [el('label', { class: 'check terms-check', for: 'su-terms' }, [terms, el('span', {}, [
+        'Acepto los ', legal('terminos', 'términos y condiciones'), ', el ', legal('comercios', 'acuerdo de comercio'), ', la ',
+        legal('privacidad', 'política de privacidad'), ' y la de ', legal('uso-aceptable', 'uso aceptable'), '.',
+      ])])]);
+      form.append(name, email, biz, rif, pw, termsField);
       const v = (f) => f.querySelector('input');
       checks = [
         [v(name), (x) => (x.trim() ? null : 'Escribe tu nombre.')],
@@ -987,6 +1002,7 @@
         [v(biz), (x) => (x.trim() ? null : 'Escribe el nombre de tu negocio.')],
         [v(rif), (x) => (RIF_RE.test(x.trim().toUpperCase()) ? null : 'El RIF debe tener la forma J-12345678-9.')],
         [pwInput, (x) => (x.length >= 10 ? null : 'La contraseña debe tener al menos 10 caracteres.')],
+        [terms, () => (terms.checked ? null : 'Para crear la cuenta debes aceptar los términos y las políticas.')],
       ];
     } else {
       const email = field({ id: 'li-email', label: 'Correo', attrs: { type: 'email', autocomplete: 'email', required: true, spellcheck: 'false', autocapitalize: 'off', placeholder: 'tu@negocio.com…' } });
@@ -1006,7 +1022,7 @@
       try {
         const vals = checks.map(([i]) => i.value);
         const s = signup
-          ? await api.post('/signup', { name: vals[0].trim(), email: vals[1].trim(), business_name: vals[2].trim(), rif: normRif(vals[3]), password: vals[4] })
+          ? await api.post('/signup', { name: vals[0].trim(), email: vals[1].trim(), business_name: vals[2].trim(), rif: normRif(vals[3]), password: vals[4], accept_terms: true })
           : await api.post('/login', { email: vals[0].trim(), password: vals[1] });
         state.session = s;
         const next = r.query.next && r.query.next.startsWith('/dashboard') ? r.query.next : '/dashboard';
@@ -2103,6 +2119,67 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Legal (textos en assets/legal.js)
+  // ---------------------------------------------------------------------------
+  // Lo que va entre corchetes lo completa Paguara: se resalta para que no se publique sin llenar
+  function legalText(t) {
+    return t.split(/(\[[^\]]+\])/).filter(Boolean).map((part) => (part[0] === '[' ? el('mark', { class: 'fill', text: part }) : part));
+  }
+  function legalBlock(b) {
+    if (Array.isArray(b)) return el('ul', {}, b.map((x) => el('li', {}, legalText(x))));
+    if (b && b.table) return simpleTable(b.table[0], b.table[1], 'Tabla');
+    return el('p', {}, legalText(b));
+  }
+  function legalPage(main, slug) {
+    const L = window.LEGAL;
+    if (!L) return false;
+    const doc = slug ? L.docs.find((d) => d.slug === slug) : null;
+    if (slug && !doc) return false;
+    setTitle(doc ? doc.title : 'Legal');
+    const navLinks = L.docs.map((d) => el('a', { href: '#/legal/' + d.slug, text: d.title, 'aria-current': doc === d ? 'page' : false }));
+    const nav = el('nav', { class: 'docs-nav', 'aria-labelledby': 'legal-nav-h' }, [
+      el('h2', { id: 'legal-nav-h' }, [el('a', { href: '#/legal', class: 'legal-home', text: 'Legal', 'aria-current': doc ? false : 'page' })]),
+      el('ol', {}, navLinks.map((a) => el('li', {}, [a]))),
+    ]);
+    const draft = el('p', { class: 'banner warn', role: 'note' }, [el('b', { text: 'Borrador, pendiente de revisión legal.' }),
+      'Este texto todavía no es vinculante: debe revisarlo un abogado venezolano antes de publicarse. Lo resaltado entre corchetes falta por completar.']);
+    let body;
+    if (!doc) {
+      body = [
+        el('header', {}, [el('h1', { tabindex: '-1', text: 'Legal' }), el('p', { text: 'Las reglas con las que trabajamos con comercios y pagadores, y cómo cuidamos sus datos y su dinero.' })]),
+        draft,
+        el('ul', { class: 'legal-index' }, L.docs.map((d) => el('li', {}, [
+          el('a', { href: '#/legal/' + d.slug, text: d.title }), el('p', { class: 'muted', text: d.summary }),
+        ]))),
+      ];
+    } else {
+      body = [
+        el('header', {}, [el('h1', { tabindex: '-1', text: doc.title }), el('p', { text: doc.summary }),
+          el('p', { class: 'legal-meta small', text: 'Versión ' + L.version + ' · Actualizado el ' + L.updated })]),
+        draft,
+        ...doc.sections.map(([h, blocks], i) => el('section', { class: 'doc-sec', 'aria-labelledby': 'legal-s' + i }, [
+          el('h2', { id: 'legal-s' + i, text: h }), ...blocks.map(legalBlock),
+        ])),
+      ];
+    }
+    main.replaceChildren(el('div', { class: 'wrap docs legal' }, [nav, el('div', { class: 'docs-body' }, body)]));
+    return true;
+  }
+
+  // Aviso de cookies: hoy solo hay cookies necesarias, así que informa y no pide consentimiento.
+  // Si algún día se agrega analítica, esto debe pasar a pedir permiso antes de cargarla (docs/legal.md).
+  function cookieNotice() {
+    try { if (localStorage.getItem('paguara_cookies') === 'ok') return; } catch (_) { /* sin almacenamiento: se muestra cada vez */ }
+    const ok = el('button', { class: 'btn sm', type: 'button', text: 'Entendido' });
+    const box = el('div', { class: 'cookie-note', role: 'region', 'aria-label': 'Aviso de cookies' }, [
+      el('p', {}, ['Solo usamos cookies necesarias para que el sitio funcione, como la de tu sesión. ', el('a', { href: '#/legal/cookies', text: 'Política de cookies' })]),
+      ok,
+    ]);
+    ok.addEventListener('click', () => { try { localStorage.setItem('paguara_cookies', 'ok'); } catch (_) { /* nada */ } box.remove(); });
+    document.body.append(box);
+  }
+
+  // ---------------------------------------------------------------------------
   // 404
   // ---------------------------------------------------------------------------
   function notFound(main) {
@@ -2134,4 +2211,5 @@
     }
   });
   render();
+  cookieNotice();
 })();

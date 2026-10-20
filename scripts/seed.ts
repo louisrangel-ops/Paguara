@@ -34,7 +34,7 @@ async function main() {
   }
 
   const signup = await post('/api/dashboard/signup',
-    { name: 'Desarrollo', email: EMAIL, password: PASSWORD, business_name: 'Tienda de Pruebas', rif: 'J-00000001-0' },
+    { name: 'Desarrollo', email: EMAIL, password: PASSWORD, business_name: 'Tienda de Pruebas', rif: 'J-00000001-0', accept_terms: true },
     { 'x-requested-with': 'fetch' });
   // El comercio se inserta antes que el usuario, así que una repetición choca por el RIF o por el correo.
   if (signup.status === 400 && ['email', 'rif'].includes(signup.body.error?.param)) {

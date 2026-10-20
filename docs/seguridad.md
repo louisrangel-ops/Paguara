@@ -39,7 +39,8 @@ por despliegue. Detalle en [api.md](api.md#llaves-api).
 - CSRF: todo pedido que no sea GET/HEAD exige `X-Requested-With: fetch` (403 `csrf_rejected`).
 - Límite de login: 10 fallos por correo o 50 por IP en 15 minutos → 429 `too_many_attempts` (Redis).
 - Roles: cambiar métodos y módulos (`PUT /api/dashboard/capabilities/:key` y solicitarlos) exige rol `owner` o `admin` (403 `insufficient_role`). El resto del panel todavía no distingue roles.
-- Registro: el comercio nace `pending_kyc` y solo opera con llaves de prueba hasta que cumplimiento lo active.
+- Registro: el comercio nace `pending_kyc` y solo opera con llaves de prueba hasta que cumplimiento lo active. Exige `accept_terms: true` y guarda la constancia (versión, IP, navegador) en `dashboard.legal_acceptances` ([legal.md](legal.md)).
+- Divulgación responsable: política en `#/legal/seguridad` y `/.well-known/security.txt` cuando `SECURITY_CONTACT` está definida.
 
 ## Checkout y links de pago
 

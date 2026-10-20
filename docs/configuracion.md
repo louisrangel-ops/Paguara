@@ -22,6 +22,7 @@ reales) y `.env.development` (sandbox local, ficticio, versionado a propósito).
 | `LIVEMODE` | `false` | `true` = producción (solo llaves live). Cada modo con su propia base | `api-key.guard.ts` |
 | `COOKIE_SECURE` | seguro salvo `false` | `false` quita `Secure` a la cookie de sesión (solo http local). Distinto de `false` activa el chequeo de secretos del arranque | `auth.service.ts`, `secrets-check.ts` |
 | `TRUST_PROXY` | vacío | Valor de `trust proxy` de Express detrás de un balanceador (p. ej. `1`) | `src/main.ts` |
+| `SECURITY_CONTACT` | — | Contacto para reportar vulnerabilidades (`mailto:…` o `https://…`). Sin ella `/.well-known/security.txt` responde 404 | `security-txt.controller.ts` |
 | `PUBLIC_BASE_URL` | URL del pedido | URL pública para links de pago y checkout | `dashboard.controller.ts` |
 | `OTHER_MODE_DASHBOARD_URL` | `null` | Dashboard del otro modo, para el selector "modo de prueba" | `dashboard.controller.ts` |
 | `FX_MAX_RATE_AGE_SECONDS` | `21600` (6 h) | Antigüedad máxima de una tasa para cotizar | `fx.service.ts` |

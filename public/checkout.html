@@ -212,6 +212,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .foot { display: grid; gap: 2px; justify-items: center; text-align: center; font-size: 14px; color: var(--muted); }
 .foot .brand { font-weight: 600; color: var(--ink); }
 .foot svg { vertical-align: -2px; margin-right: 4px; }
+.foot .legal a { color: var(--muted); display: inline-block; padding-block: 10px; }
+.foot .legal a:hover { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
@@ -250,6 +252,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
   <footer class="foot">
     <span><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Pago procesado por <span class="brand" id="brand-name" translate="no"></span> con conexión cifrada</span>
     <span id="ref-line"></span>
+    <span class="legal"><a href="/#/legal/terminos" target="_blank" rel="noopener">Términos</a> · <a href="/#/legal/privacidad" target="_blank" rel="noopener">Privacidad</a></span>
   </footer>
   <p class="sr-only" id="status" role="status" aria-live="polite"></p>
 </main>

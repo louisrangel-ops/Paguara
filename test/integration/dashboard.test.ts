@@ -8,6 +8,7 @@ import { AuthService, hashPassword, verifyPassword } from '../../src/dashboard/a
 import { DashboardService } from '../../src/dashboard/dashboard.service';
 import { enqueueEvent, isPrivateAddress, validateEndpointUrl, WebhooksService } from '../../src/webhooks/webhooks.service';
 import { withTransaction } from '../../src/database/database';
+import { LEGAL_VERSION } from '../../src/legal/legal-documents';
 import { Ctx, seedRates, setup } from './helpers';
 
 let ctx: Ctx;
@@ -45,14 +46,14 @@ test('contraseñas con scrypt: verifica la correcta, rechaza otra, no guarda la 
 
 test('registro crea comercio con KYC pendiente y usuario; login abre sesión; logout la cierra', async () => {
   const email = `ana+${Date.now()}@ejemplo.com`;
-  const { merchantId } = await auth.signup({ name: 'Ana', email: email.toUpperCase(), password: 'una-clave-segura', business_name: 'Arepera Ana', rif: 'j123456789' });
+  const { merchantId } = await auth.signup({ name: 'Ana', email: email.toUpperCase(), password: 'una-clave-segura', business_name: 'Arepera Ana', rif: 'j123456789', accept_terms: true }, { ip: '203.0.113.7', userAgent: 'prueba' });
   const m = await ctx.merchants.get(merchantId);
   assert.equal(m.status, 'pending_kyc');
   assert.equal(m.rif, 'J-12345678-9');
 
-  await assert.rejects(auth.signup({ name: 'Otra', email, password: 'una-clave-segura', business_name: 'Xy', rif: 'J-87654321-0' }),
+  await assert.rejects(auth.signup({ name: 'Otra', email, password: 'una-clave-segura', business_name: 'Xy', rif: 'J-87654321-0', accept_terms: true }),
     (e: { extra: { param: string } }) => e.extra.param === 'email');
-  await assert.rejects(auth.signup({ name: 'Ana', email: 'b@x.co', password: 'corta', business_name: 'X', rif: 'J-87654321-0' }), /10 caracteres/);
+  await assert.rejects(auth.signup({ name: 'Ana', email: 'b@x.co', password: 'corta', business_name: 'X', rif: 'J-87654321-0', accept_terms: true }), /10 caracteres/);
 
   await assert.rejects(auth.login(email, 'otra-clave-mala', '10.0.0.1'), (e: { code: string }) => e.code === 'invalid_credentials');
   await assert.rejects(auth.login('nadie@ejemplo.com', 'una-clave-segura', '10.0.0.1'), (e: { code: string }) => e.code === 'invalid_credentials');
@@ -68,9 +69,25 @@ test('registro crea comercio con KYC pendiente y usuario; login abre sesión; lo
   assert.equal(await auth.resolve(token), null);
 });
 
+test('registro: sin aceptar los documentos legales no crea nada; al aceptarlos queda la constancia inmutable', async () => {
+  const email = `legal+${Date.now()}@ejemplo.com`;
+  const base = { name: 'Rosa', email, password: 'una-clave-segura', business_name: 'Panadería Rosa', rif: 'J-31313131-3' };
+  await assert.rejects(auth.signup(base), (e: { extra: { param: string } }) => e.extra.param === 'accept_terms');
+  await assert.rejects(auth.signup({ ...base, accept_terms: 'true' }), (e: { extra: { param: string } }) => e.extra.param === 'accept_terms');
+  assert.equal((await ctx.pool.query('SELECT 1 FROM dashboard.users WHERE email = $1', [email])).rowCount, 0);
+
+  const { merchantId } = await auth.signup({ ...base, accept_terms: true }, { ip: '198.51.100.4', userAgent: 'Navegador/1.0' });
+  const rows = (await ctx.pool.query(
+    'SELECT document, version, ip, user_agent FROM dashboard.legal_acceptances WHERE merchant_id = $1 ORDER BY document', [merchantId])).rows;
+  assert.deepEqual(rows.map((r) => r.document), ['comercios', 'privacidad', 'terminos', 'uso-aceptable']);
+  assert.ok(rows.every((r) => r.version === LEGAL_VERSION && r.ip === '198.51.100.4' && r.user_agent === 'Navegador/1.0'));
+  await assert.rejects(ctx.pool.query('UPDATE dashboard.legal_acceptances SET version = $1 WHERE merchant_id = $2', ['2020-01-01', merchantId]));
+  await assert.rejects(ctx.pool.query('DELETE FROM dashboard.legal_acceptances WHERE merchant_id = $1', [merchantId]));
+});
+
 test('login: tras 10 fallos con el mismo correo responde 429 aunque la clave sea correcta', async () => {
   const email = `bloqueo+${Date.now()}@ejemplo.com`;
-  await auth.signup({ name: 'Luis', email, password: 'una-clave-segura', business_name: 'Bodega', rif: 'J-22223333-4' });
+  await auth.signup({ name: 'Luis', email, password: 'una-clave-segura', business_name: 'Bodega', rif: 'J-22223333-4', accept_terms: true });
   for (let i = 0; i < 10; i++) await assert.rejects(auth.login(email, 'mala-mala-mala', `10.1.0.${i}`));
   await assert.rejects(auth.login(email, 'una-clave-segura', '10.1.1.1'), (e: { code: string }) => e.code === 'too_many_attempts');
 });
