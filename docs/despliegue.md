@@ -85,7 +85,7 @@ Las llaves de prueba no sirven en producción ni las live en el sandbox (401 `wr
 nunca expuesto al público; en el puerto público esas rutas dan 404. El primer maestro se crea una sola vez con el
 token de sistema (`POST /internal/operators {name, role: 'master'}` por el puerto interno); su token `opk_…` se
 muestra una vez y desde ahí el maestro crea a los demás desde `/admin`. En desarrollo lo hace `npm run seed`
-(maestro `maestro-dev`). Antes de cobrar dinero real falta además la rotación de llaves con KMS.
+(maestro `maestro-dev`; también al repetirlo sobre una base que ya tenía el comercio de prueba, si aún no hay maestro). Antes de cobrar dinero real falta además la rotación de llaves con KMS.
 
 ## CI (`.github/workflows/ci.yml`)
 

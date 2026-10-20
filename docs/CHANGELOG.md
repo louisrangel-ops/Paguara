@@ -18,6 +18,7 @@ Cada migración nueva se anota con su número.
 - [Rieles] Con `LIVEMODE=true` la API no arranca si queda un riel de prueba (#11).
 - [Config] `SECRETS_ENCRYPTION_KEY`, `INTERNAL_PORT`, `PAYOUT_APPROVALS_REQUIRED`, `RATE_LIMIT_*`; en live se exigen las tres primeras (#11).
 - [Web] Panel del comercio con "Cuenta de liquidación" en bolívares; panel interno con login por operador, bandeja de aprobaciones, contrato al habilitar y alta de operadores; docs públicas con la sección de pruebas (#11).
+- [Despliegue] `npm run seed` crea el primer maestro (`maestro-dev`) aunque el comercio de prueba ya exista, así una base que se sube a la 010 también lo recibe (#11).
 - [Docs] Liquidaciones, ledger, modelo de datos, API, seguridad, configuración, despliegue, arquitectura y módulos por comercio actualizados (#11).
 
 - [Despliegue] `scripts/build-web.mjs` ya no acepta carpeta de salida: siempre escribe en `dist-web/`, así el borrado previo nunca toca el repo (#10).
