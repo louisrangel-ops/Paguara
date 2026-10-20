@@ -129,3 +129,6 @@ Detalle en [legal.md](legal.md).
 | `P0011`, `P0012` | Transición no permitida / montos congelados | 409 `payment_intent_unexpected_state` |
 | `P0020` | Liberar o aprobar una liquidación sin las aprobaciones pedidas | 409 `payout_not_approved` |
 | `23505` en `payment_intents_rail_ref_idx` | Referencia bancaria reutilizada | 409 `rail_reference_already_used` |
+
+### 012 · `012_return_url.sql` — URL de retorno del checkout
+- `payments.payment_intents.return_url` (`text`, `NULL` = sin regreso), máximo 2048 caracteres. La forma (https, sin usuario ni clave) la valida la API. La usan las [integraciones con tiendas](integraciones/README.md).

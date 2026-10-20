@@ -9,6 +9,19 @@ Cada migración nueva se anota con su número.
 
 ## Sin publicar
 
+
+- [Integraciones] Plugin de WooCommerce en `integraciones/woocommerce/paguara-woocommerce/`: redirección al checkout alojado, regreso a la tienda, webhooks firmados verificados y consulta del pago con la llave secreta, modo pruebas y checkout de bloques. Ver [integraciones/woocommerce.md](integraciones/woocommerce.md).
+- [API] `return_url` opcional al crear un PaymentIntent (400 `return_url_invalid`); viene en `PaymentIntent` y en la vista del checkout.
+- [Esquema] Migración 012: `payments.payment_intents.return_url`.
+- [Web] El checkout vuelve a la tienda: enlace “Volver a la tienda sin pagar” y, al pagar, botón y regreso automático a los 5 s con `payment_intent` y `redirect_status`.
+- [CI] Job `woocommerce`: `php -l` y las pruebas del plugin.
+- [Docs] Guía de integración con tiendas en línea y orden recomendado de plataformas: [integraciones/README.md](integraciones/README.md).
+- [Docs] Documentos legales en borrador como páginas del sitio (`#/legal/...`): términos, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable; textos en `public/assets/legal.js`. Ver [legal.md](legal.md).
+- [Esquema] Migración 011: `dashboard.legal_acceptances`, append-only, constancia de la versión aceptada con IP y navegador.
+- [API] `POST /api/dashboard/signup` exige `accept_terms: true` (400 `signup_invalid`, `param: accept_terms`) y registra la aceptación en la misma transacción.
+- [Web] Casilla de aceptación en el registro, enlaces legales en el pie del sitio y del checkout, aviso de cookies informativo (`localStorage` `paguara_cookies`).
+- [Seguridad] `GET /.well-known/security.txt` (RFC 9116) si `SECURITY_CONTACT` está definida.
+- [Config] `SECURITY_CONTACT`.
 - [Rieles] Base ISO 8583 en `src/payment-intents/rails/iso8583/`: codec ASCII de perfil de prueba y simulador emisor en memoria (autorización, rechazo, timeout, reversos, conciliación). No es un riel registrado ni toca `LIVEMODE` (#13).
 - [CI] Workflow `iso8583-tests.yml`: typecheck y pruebas unitarias en PRs que tocan el codec o el simulador (#13).
 - [Docs] `iso8583-acquirer-integration.md` (requisitos del adquirente y próximos pasos, #13). La documentación de #13 en métodos de pago, CI, pruebas e índice; el riel sandbox ya no se describe como activo en `LIVEMODE=true` y webhooks aclara que el secreto se guarda cifrado cuando hay `SECRETS_ENCRYPTION_KEY` (#11); entradas de #12 con su número (#15).

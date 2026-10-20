@@ -62,6 +62,7 @@ export interface PaymentIntentRow {
   canceled_at: Date | null;
   payment_link_id: string | null;
   payment_method_types: PaymentMethodType[] | null;
+  return_url: string | null;
 }
 
 /** Columnas que una transición puede modificar. id, comercio, monto y moneda nunca cambian. */
@@ -113,19 +114,19 @@ export class PaymentIntentRepository {
     client: PoolClient,
     row: { id: string; merchantId: string; amount: bigint; currency: Currency; metadata: Record<string, unknown>;
            livemode: boolean; idempotencyKey: string | null; clientSecret: string; customer: Record<string, unknown> | null;
-           ttlSeconds: number; paymentLinkId?: string | null; paymentMethodTypes?: string[] | null },
+           ttlSeconds: number; paymentLinkId?: string | null; paymentMethodTypes?: string[] | null; returnUrl?: string | null },
     actor: string,
   ): Promise<{ pi: PaymentIntentRow; created: boolean }> {
     const res = await client.query<PaymentIntentRow>(
       `INSERT INTO payments.payment_intents
          (id, merchant_id, amount, currency, metadata, livemode, idempotency_key, client_secret, customer, expires_at, payment_link_id,
-          payment_method_types)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(secs => $10), $11, $12)
+          payment_method_types, return_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(secs => $10), $11, $12, $13)
        ON CONFLICT (merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
        RETURNING *`,
       [row.id, row.merchantId, row.amount.toString(), row.currency, JSON.stringify(row.metadata), row.livemode,
        row.idempotencyKey, row.clientSecret, row.customer ? JSON.stringify(row.customer) : null, row.ttlSeconds,
-       row.paymentLinkId ?? null, row.paymentMethodTypes ?? null],
+       row.paymentLinkId ?? null, row.paymentMethodTypes ?? null, row.returnUrl ?? null],
     );
     if (res.rowCount === 0) {
       const existing = await client.query<PaymentIntentRow>(
@@ -216,6 +217,7 @@ export function toApi(pi: PaymentIntentRow) {
     cancellation_reason: pi.cancellation_reason,
     metadata: pi.metadata,
     customer: pi.customer,
+    return_url: pi.return_url,
     client_secret: pi.client_secret,
     livemode: pi.livemode,
     expires_at: pi.expires_at,
@@ -239,6 +241,7 @@ export function toCheckoutApi(pi: PaymentIntentRow) {
     fx: full.fx && { rate: full.fx.rate, source: full.fx.source, expires_at: full.fx.expires_at, frozen: full.fx.frozen },
     next_action: full.next_action,
     last_payment_error: full.last_payment_error && { code: full.last_payment_error.code, message: full.last_payment_error.message },
+    return_url: full.return_url,
     expires_at: full.expires_at,
   };
 }

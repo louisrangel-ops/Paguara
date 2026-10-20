@@ -863,6 +863,7 @@
           [code('customer'), 'objeto', 'Opcional. Datos del pagador para conciliación.'],
           [code('metadata'), 'objeto', 'Opcional. Tus propios datos; vuelven en los webhooks.'],
           [code('expires_in'), 'número', 'Opcional. Segundos hasta que el pago venza si nadie paga.'],
+          [code('return_url'), 'string', 'Opcional. URL https a la que vuelve tu cliente desde el checkout. Le agregamos payment_intent y redirect_status; confirma el estado consultando el pago, no con esos parámetros.'],
         ], 'Campos para crear un pago'),
         P('Si reusas una Idempotency-Key con otro cuerpo, recibes ', code('422 idempotency_key_reused'), '; si la primera llamada sigue en curso, ', code('409'), '.'),
       ]),
@@ -871,6 +872,7 @@
         codeBlock(B + '/checkout?pi=pi_3f9a1c2e8b7d40&cs=pi_3f9a1c2e8b7d40_secret_Xq8…&pk=pk_test_51Qd…', 'URL del checkout'),
         P('El checkout muestra los métodos, cotiza el monto en la moneda del método con la tasa congelada y su cuenta regresiva, pide los datos de Pago Móvil C2P y da instrucciones para transferencias, Zelle, USDT (con QR) y efectivo. Se actualiza solo cuando el banco o la red confirman.'),
         P('¿No programas? Crea un ', el('a', { href: '#/dashboard/links', text: 'link de pago' }), ' en el panel: cada vez que alguien lo abre se crea un pago nuevo y se le lleva al checkout.'),
+        P('¿Vendes con WooCommerce? Instala el plugin de Paguara: crea el pago, lleva a tu cliente al checkout, lo devuelve a tu tienda y marca el pedido pagado cuando llega el webhook firmado.'),
       ]),
       sec('metodos', 'Métodos y monedas', [
         P('Cada método cobra en una moneda fija. Si difiere de la moneda del precio, convertimos con la tasa de la fuente que corresponda (BCV para USD/VES, Binance P2P para USDT/VES).'),
@@ -912,6 +914,7 @@
         simpleTable(['Código', 'HTTP', 'Qué significa'], [
           [code('amount_invalid'), '422', 'El monto no es un entero positivo en unidades mínimas.'],
           [code('idempotency_key_reused'), '422', 'Usaste la misma Idempotency-Key con otro cuerpo.'],
+          [code('return_url_invalid'), '400', 'return_url no es una URL https absoluta o trae usuario y clave.'],
           [code('fx_quote_expired'), '409', ERRORS.fx_quote_expired + ' Vuelve a adjuntar el método.'],
           [code('fx_rate_unavailable'), '503', 'No hay una tasa reciente para convertir a la moneda del método.'],
           [code('rail_reference_already_used'), '409', 'La referencia del banco ya se usó para otro pago.'],
