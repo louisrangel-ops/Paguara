@@ -7,7 +7,7 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | Documento | Contenido |
 |---|---|
 | [Arquitectura y módulos](arquitectura.md) | Procesos, módulos NestJS, flujo de un pedido, estructura del repo |
-| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–011 |
+| [Modelo de datos y migraciones](modelo-de-datos.md) | Esquemas de PostgreSQL, tablas, triggers y lo que agregó cada migración 001–012 |
 | [Ledger y plan de cuentas](ledger.md) | Doble partida multi-moneda, cuentas, plantillas de asientos, garantías de la BD |
 | [Máquina de estados del PaymentIntent](payment-intents.md) | Estados, eventos, congelamiento de tasa, vencimiento, idempotencia |
 | [Tasas de cambio (FX)](fx.md) | `fx.rates`, cotizaciones congeladas, fuentes, aritmética exacta |
@@ -16,6 +16,8 @@ coinciden, el error es de la documentación: corrígela en el mismo PR.
 | [API y autenticación](api.md) | API v1, checkout, API interna, llaves, idempotencia, errores |
 | [API del dashboard](dashboard-api.md) | Contrato web ↔ servidor del panel del comercio |
 | [Webhooks](webhooks.md) | Outbox, eventos, firma, reintentos, protección SSRF |
+| [Integración con tiendas en línea](integraciones/README.md) | Patrón de checkout alojado, plataformas (WooCommerce, Shopify, Wix, Tiendanube…), orden recomendado |
+| [Plugin de WooCommerce](integraciones/woocommerce.md) | Flujo, webhook, ajustes, instalación y pruebas del plugin |
 | [Liquidaciones](liquidaciones.md) | Conciliación de fondos del riel, corte de lote en bolívares, spread y doble aprobación |
 | [Configuración](configuracion.md) | Variables de entorno, una por una |
 | [Despliegue, pruebas y CI](despliegue.md) | Docker, Railway, migraciones, seed, dev-jobs, pruebas, CI |

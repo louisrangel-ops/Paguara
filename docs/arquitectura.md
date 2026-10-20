@@ -87,12 +87,13 @@ Worker de webhooks    ──▶ entrega firmada a los endpoints del comercio con
 ## Estructura del repositorio
 
 ```
-db/migrations/        SQL 001–009, aplicado en orden por scripts/migrate.ts
+db/migrations/        SQL 001–012, aplicado en orden por scripts/migrate.ts
 src/                  aplicación NestJS (ver tabla de módulos)
 scripts/              migrate.ts, dev-jobs.ts, seed.ts
 public/               checkout.html, site.html, admin.html, assets/ (site.css, site.js, site-demo.js)
 test/unit/            pruebas puras (dinero, plantillas de asientos, máquina de estados, chequeo de secretos)
 test/integration/     pruebas contra PostgreSQL real (crean y borran una BD temporal)
+integraciones/        plugins para tiendas en línea (woocommerce/), con sus propias pruebas
 docs/                 esta documentación
 .github/workflows/    CI
 ```

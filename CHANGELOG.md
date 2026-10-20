@@ -5,6 +5,7 @@ Cada cambio de código, esquema, API o configuración se anota aquí en el mismo
 ## 2026-10-20
 
 ### Agregado
+- **Plugin de WooCommerce** (borrador): el comercio instala un .zip y su tienda cobra con Paguara; el pagador vuelve a la tienda al pagar y el pedido se marca pagado cuando Paguara lo confirma por webhook firmado. La API acepta `return_url` (migración 012). Ver [docs/integraciones/woocommerce.md](docs/integraciones/woocommerce.md) y el orden recomendado de plataformas en [docs/integraciones/README.md](docs/integraciones/README.md).
 - **Documentos legales (borradores)**: términos y condiciones, acuerdo de comercio, privacidad, cookies, uso aceptable, prevención de LC/FT y divulgación responsable, como páginas del sitio en `#/legal`. El registro exige aceptarlos y guarda la constancia (migración 011). Deben pasar por un abogado venezolano antes de publicarse. Ver [docs/legal.md](docs/legal.md).
 
 ### Cambiado
