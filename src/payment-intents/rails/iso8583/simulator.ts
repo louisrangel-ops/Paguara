@@ -11,6 +11,7 @@ export interface SimulatorProfile {
   defaultDecision: SimulatorDecision;
   declineCode: string;
   timeoutStan?: string;
+  timeoutAfterApprovalStan?: string;
   declineStan?: string;
 }
 export const SIMULATOR_PROFILE: SimulatorProfile = {
@@ -63,6 +64,7 @@ export class Iso8583AcquirerSimulator {
         this.journal.set(key,existing);
         this.requestFingerprints.set(key,fingerprint);
       }
+      if (this.profile.timeoutAfterApprovalStan === f[11] && existing.status === 'approved') throw new SimulatedTimeout();
       const response:IsoFields = {3:f[3],4:f[4],7:f[7],11:f[11],37:f[37],39:existing.status==='approved'?'00':existing.status==='reversed'?'94':this.profile.declineCode,
         41:f[41],42:f[42],49:f[49]};
       if (existing.status==='approved') response[38]=existing.authorization!;
