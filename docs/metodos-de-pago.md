@@ -78,9 +78,9 @@ Referencia: `sbx_<attemptKey>`.
 
 ## ISO 8583 (base de desarrollo)
 
-Código: `rails/iso8583/codec.ts` y `rails/iso8583/simulator.ts`. Plan y requisitos del adquirente en
-[iso8583-acquirer-integration.md](iso8583-acquirer-integration.md). **No es un riel**: no implementa `RailAdapter`, no
-abre sockets, no está registrado en `buildRails` y `card_national` sigue en el sandbox.
+Código: `rails/iso8583/codec.ts`, `simulator.ts` y `simulator.rail.ts`. Plan y requisitos del adquirente en
+[iso8583-acquirer-integration.md](iso8583-acquirer-integration.md). **No es un riel en uso**: no abre sockets, no está
+registrado en `buildRails` y `card_national` sigue en el sandbox.
 
 - `encodeIso`/`decodeIso`: MTI de 4 dígitos, bitmap primario (y secundario si hay campos > 64), campos ASCII fijos y
   LLVAR según `TEST_PROFILE` (DE 2, 3, 4, 7, 11, 12, 13, 14, 18, 22, 25, 32, 37, 38, 39, 41, 42, 49). Rechaza campos fuera
@@ -90,8 +90,16 @@ abre sockets, no está registrado en `buildRails` y `card_national` sigue en el 
   `0420`→`0430` (reverso; `25` si no encuentra la original). Un `0100` repetido con el mismo STAN/RRN no crea otra
   transacción: responde según el estado actual del diario (`00` si sigue aprobada, `94` si ya se reversó). Si cambia
   DE 3, 4, 41, 42 o 49 da error; los demás campos no se comparan. `timeoutStan` simula un timeout de resultado desconocido
-  (`SimulatedTimeout`). `reconcile()` resume aprobados, rechazados, reversados y el neto aprobado.
-- Pruebas: `test/unit/iso8583-codec.test.ts` y `test/unit/iso8583-simulator.test.ts`.
+  (`SimulatedTimeout`); `timeoutAfterApprovalStan`, un timeout después de aprobar y anotar en el diario. `reconcile()` resume aprobados, rechazados, reversados y el neto aprobado.
+- `Iso8583SimulatorRail` (`simulator.rail.ts`): `RailAdapter` **solo para pruebas** del riel `ves_card_switch`. Acepta
+  `card_national` en VES (otro método o moneda, o monto fuera de DE 4 → `failed processing_error`), deriva STAN y RRN
+  del `attemptKey` con SHA-256, arma el `0100` (moneda 928) y traduce el `39` de la respuesta: `00` → `succeeded` con el
+  RRN como referencia, `51` → `insufficient_funds`, `05` → `do_not_honor`, otro → `card_declined`. Escenarios
+  `approve`, `decline` y `timeout_after_approval`; `reconcileAttempt(attemptKey)` consulta el diario tras un timeout.
+- Pruebas: `test/unit/iso8583-codec.test.ts`, `test/unit/iso8583-simulator.test.ts` y
+  `test/integration/iso8583-e2e.test.ts` (PaymentIntent → `0100`/`0110` → ledger → conciliación; rechazo del emisor
+  vuelve a `requires_payment_method` sin asiento; timeout después de aprobar queda en `processing` y la conciliación lo
+  completa una sola vez).
 
 ## Pendiente
 

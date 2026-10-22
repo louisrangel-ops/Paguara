@@ -58,14 +58,18 @@ Cr platform:tax_payable:iva:VES            −9,05   16 % de la comisión
 **Fondos recibidos** (`railFundsReceivedEntry`): `Dr cash / Cr rail_clearing` por el bruto del lote y, por comercio, `Dr pending / Cr available` por su neto.
 
 **Liquidación** (`merchantPayoutEntry`). Por ley siempre en bolívares (migración 010): lo cobrado en VES sale sin
-conversión y lo cobrado en USD o USDT se convierte a VES con spread de 1,2 %:
+conversión, lo cobrado en USD se convierte a VES a la tasa BCV exacta sin spread (#19) y lo cobrado en USDT se
+convierte con spread de 1,2 %:
 ```
 Cobrado en VES:   Dr available:VES / Cr cash:VES
-Cobrado en USD:   Dr available:USD (saldo)
-                  Cr fx_spread_revenue:USD (spread)
-                  Cr fx_position:USD (saldo − spread)
+Cobrado en USD:   Dr available:USD (saldo) / Cr fx_position:USD (saldo)
+                  Dr fx_position:VES (convertido a BCV) / Cr cash:VES
+Cobrado en USDT:  Dr available:USDT (saldo)
+                  Cr fx_spread_revenue:USDT (spread)
+                  Cr fx_position:USDT (saldo − spread)
                   Dr fx_position:VES (convertido) / Cr cash:VES
 ```
+Las líneas en cero se descartan (`nonZeroLines`), así que una conversión sin spread no deja línea en `fx_spread_revenue`.
 La plantilla sigue aceptando varias porciones (`allocateByBps`, el céntimo de redondeo va a la última), pero la base
 solo admite una regla en VES al 100 %.
 

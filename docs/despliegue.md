@@ -126,6 +126,7 @@ En cada PR y en cada push a `main`:
 | `test/unit/hardening.test.ts` | Arranque live sin rieles de prueba, rutas internas, reglas de límite de peticiones |
 | `test/unit/kms.test.ts` | Cifrado por sobre local y AWS (cliente falso), propósito atado al dato, rotación, formatos anteriores |
 | `test/unit/totp.test.ts` | Vectores del RFC 6238, desfase de reloj, códigos de respaldo, parser de extractos, fecha de Caracas |
+| `test/integration/iso8583-e2e.test.ts` | Flujo completo con `Iso8583SimulatorRail`: aprobación, rechazo del emisor y timeout después de aprobar |
 | `test/integration/ledger.test.ts` | Triggers del ledger, idempotencia de asientos, 100 asientos concurrentes sin deadlock |
 | `test/integration/payment-intent-flow.test.ts` | Tabla SQL = tabla TS, flujo completo, P2P, rechazos, cotización vencida, confirmaciones simultáneas, USDT, IGTF, aislamiento entre comercios |
 | `test/integration/merchants-checkout.test.ts` | Llaves, KYC, RIF, checkout con `client_secret`, idempotencia durable, vencimiento, saldos no editables, corte de lote, `return_url` |

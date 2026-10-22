@@ -72,7 +72,8 @@ Las liquidaciones creadas antes de la migración 010 quedaron como `approved`.
 ## Spread cambiario
 
 `spread_bps` del pedido o `FX_PAYOUT_SPREAD_BPS` (120 = 1,2 %). Se aplica **solo a la porción convertida**,
-nunca al cobrar. Se registra como ingreso visible (`platform:fx_spread_revenue`), no escondido en la tasa: la tasa
+nunca al cobrar. **USD↔VES no lleva spread**: se convierte a la tasa oficial BCV exacta (`spreadBps: 0`, fuente `BCV`;
+[fx.md](fx.md)); el spread queda para los demás pares, como USDT→VES. Se registra como ingreso visible (`platform:fx_spread_revenue`), no escondido en la tasa: la tasa
 aplicada es la de mercado y la instrucción guarda `fx_rate` y `fx_spread_bps`.
 
 ## Fondeo de tesorería
